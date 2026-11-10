@@ -44,6 +44,7 @@ import sys
 import unicodedata
 
 import zstandard
+from zh_names import CHARACTERS, CLASSES, ITEMS
 
 MAGIC = 0xCDEFBCDD
 HDR_FNV_START = 0x1F
@@ -57,6 +58,25 @@ DATA_DIR = getattr(sys, "_MEIPASS", HERE)
 USER_DIR = os.path.dirname(os.path.abspath(sys.executable)) if FROZEN else HERE
 ID_MAP_PATH = os.path.join(DATA_DIR, "unit_ids.json")
 ITEM_MAP_PATH = os.path.join(DATA_DIR, "item_ids.json")
+
+_CHINESE_NAMES = None
+
+
+def chinese_name(category: str, value: int) -> str:
+    """Optional game-derived names; absent or invalid data keeps normal fallback."""
+    global _CHINESE_NAMES
+    if _CHINESE_NAMES is None:
+        try:
+            with open(os.path.join(USER_DIR, "chinese_names.json"), encoding="utf8") as fh:
+                data = json.load(fh)
+            _CHINESE_NAMES = data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            _CHINESE_NAMES = {}
+    category_names = _CHINESE_NAMES.get(category, {})
+    if not isinstance(category_names, dict):
+        return ""
+    value = category_names.get(f"{value & 0xFFFFFFFF:08x}", "")
+    return value if isinstance(value, str) else ""
 
 # The nine u16s are the game's stat block in the struct's own order, which a
 # community cheat table exposes as `+8 Max Hp, +A Str, +C Mag, +E Dex, +10 Spd,
@@ -95,7 +115,8 @@ def job_name(value: int) -> str:
     meta = job_ids().get(value)
     if not meta:
         return f"unknown class {value:08x}"
-    return meta.get("en") or meta.get("jp") or f"class {value:08x}"
+    en = meta.get("en") or ""
+    return chinese_name("classes", value) or CLASSES.get(en) or en or meta.get("jp") or f"class {value:08x}"
 
 
 # --------------------------------------------------------------------------
@@ -195,6 +216,12 @@ def unit_ids() -> dict[int, dict]:
     if _UNIT_IDS is None:
         with open(ID_MAP_PATH, encoding="utf8") as fh:
             raw = json.load(fh)
+        # Keep the original English name available for searches.
+        for k, v in raw.items():
+            name = chinese_name("units", int(k, 16)) or CHARACTERS.get(v.get("name"))
+            if name:
+                v["name_en"] = v["name"]
+                v["name"] = name
         _UNIT_IDS = {int(k, 16): v for k, v in raw.items()}
     return _UNIT_IDS
 
@@ -1036,6 +1063,9 @@ def item_label(iid: int, meta: dict | None = None) -> str:
     jp = unicodedata.normalize("NFKC", meta.get("jp") or "").strip()
     m = re.search(r"\+(\d+)$", jp)
     base_jp = jp[:m.start()] if m else jp
+    zh = chinese_name("items", iid) or ITEMS.get(base_jp)
+    if zh:
+        return f"{zh} +{m.group(1)}" if m else zh
     # forged copies take the base item's name, so "+1…+5" line up with it, and
     # half-translated names ("Poison 剣+1", "疾風 Sword") borrow a clean one
     if base_jp in _clean_names() and (m or not en or _CJK.search(en)):

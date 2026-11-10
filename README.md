@@ -175,6 +175,23 @@ PNGs into `icons/items/` and `icons/units/` to use real images; see
 
 ## Files
 
+### Chinese names from your own game data
+
+The bundled Chinese display names are incomplete. If you have a romfs dump
+with `Msg/JPja` and the game's Simplified Chinese message folder, run:
+
+```
+python build_chinese_names.py <romfs folder> <Chinese language folder name>
+```
+
+For example, use the actual directory name under `Msg` in place of the second
+argument. This creates `chinese_names.json` beside the source editor; restart
+the editor to use it. `chinese_names_report.csv` lists every matched ID and name.
+It matches Japanese and Chinese messages by their labels,
+and excludes ambiguous names. Missing or internal entries retain their existing
+labels. For a packaged executable, copy the generated JSON next to the exe.
+The bundled mappings and their sources are in `docs/中文名称对照.md`.
+
 ```
 editor.py            the GUI
 editor_advanced.py   Arts & skills, Player, Classes, Supports, Flags and Mounts pages

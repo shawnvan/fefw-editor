@@ -212,7 +212,8 @@ def skill_label(sid: int) -> str:
         return item_label(sid, meta)
     s = _skills().get(sid & 0xFFFFFFFF)
     if s:
-        return s.get("en") or s.get("jp") or s.get("sid")
+        from zh_names import SKILLS
+        return chinese_name("skills", sid) or SKILLS.get(s.get("jp")) or s.get("en") or s.get("jp") or s.get("sid")
     return "0x%08X" % (sid & 0xFFFFFFFF)
 
 

@@ -17,7 +17,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 import fefw_core as core
-from fefw_save import item_ids, item_label, unit_ids
+from fefw_save import chinese_name, item_ids, item_label, unit_ids
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 APP_NAME = "Fortune's Weave Save Editor"
@@ -101,7 +101,8 @@ def class_label(cid: int) -> str:
     meta = jobs().get(cid & 0xFFFFFFFF)
     if not meta:
         return "unknown 0x%08X" % (cid & 0xFFFFFFFF)
-    return meta.get("en") or meta.get("jp") or "unknown 0x%08X" % (cid & 0xFFFFFFFF)
+    from zh_names import CLASSES
+    return chinese_name("classes", cid) or CLASSES.get(meta.get("en")) or meta.get("en") or meta.get("jp") or "unknown 0x%08X" % (cid & 0xFFFFFFFF)
 
 
 def class_jp(cid: int) -> str:
@@ -194,8 +195,8 @@ class AdvancedMixin:
         ent = ttk.Entry(top)
         ent.pack(fill="x")
         tree = ttk.Treeview(win, columns=("sec",), show="tree headings", selectmode="browse")
-        tree.heading("#0", text="Name", anchor="w")
-        tree.heading("sec", text="Internal id", anchor="w")
+        tree.heading("#0", text='名称', anchor="w")
+        tree.heading("sec", text='内部编号', anchor="w")
         tree.column("#0", width=300)
         tree.column("sec", width=210)
         sb = ttk.Scrollbar(win, orient="vertical", command=tree.yview)
@@ -233,8 +234,8 @@ class AdvancedMixin:
         tree.bind("<Return>", ok)
         bar = ttk.Frame(win, padding=(10, 6))
         bar.pack(side="bottom", fill="x")
-        ttk.Button(bar, text="Use this", style="Accent.TButton", command=ok).pack(side="right")
-        ttk.Button(bar, text="Cancel", command=win.destroy).pack(side="right", padx=(0, 8))
+        ttk.Button(bar, text='使用此项', style="Accent.TButton", command=ok).pack(side="right")
+        ttk.Button(bar, text='取消', command=win.destroy).pack(side="right", padx=(0, 8))
         fill()
         ent.focus_set()
         self.wait_window(win)
@@ -245,8 +246,8 @@ class AdvancedMixin:
         page = self.player_page
         card = ttk.Frame(page, style="Card.TFrame", padding=(16, 14))
         card.pack(fill="x")
-        ttk.Label(card, text="Player", style="CardH3.TLabel").pack(anchor="w")
-        ttk.Label(card, text="Army-wide values, stored in GameUserData at the start of the save.",
+        ttk.Label(card, text='玩家', style="CardH3.TLabel").pack(anchor="w")
+        ttk.Label(card, text="全军共用的数值，保存在存档的玩家数据中。",
                   style="CardMuted.TLabel").pack(anchor="w", pady=(2, 10))
         self.player_vars: dict[str, tk.StringVar] = {}
         grid = ttk.Frame(card, style="Card.TFrame")
@@ -270,19 +271,19 @@ class AdvancedMixin:
 
         card2 = ttk.Frame(page, style="Card.TFrame", padding=(16, 14))
         card2.pack(fill="x", pady=(10, 0))
-        ttk.Label(card2, text="Run settings", style="CardH3.TLabel").pack(anchor="w")
+        ttk.Label(card2, text='本周目设置', style="CardH3.TLabel").pack(anchor="w")
         ttk.Label(card2, text="Written into every copy the save keeps (header, summary and "
                              "each restart point).", style="CardMuted.TLabel").pack(anchor="w",
                                                                                     pady=(2, 8))
         row = ttk.Frame(card2, style="Card.TFrame")
         row.pack(fill="x")
-        ttk.Label(row, text="Difficulty", style="Card.TLabel", width=12).pack(side="left")
+        ttk.Label(row, text='难度', style="Card.TLabel", width=12).pack(side="left")
         self.diff_var = tk.StringVar()
         cb = ttk.Combobox(row, textvariable=self.diff_var, values=DIFFICULTIES,
                           state="readonly", width=12)
         cb.pack(side="left")
         cb.bind("<<ComboboxSelected>>", lambda e: self.apply_settings())
-        ttk.Label(row, text="Mode", style="Card.TLabel", width=9).pack(side="left", padx=(20, 0))
+        ttk.Label(row, text='模式', style="Card.TLabel", width=9).pack(side="left", padx=(20, 0))
         self.mode_var = tk.StringVar()
         cb2 = ttk.Combobox(row, textvariable=self.mode_var, values=MODES, state="readonly",
                            width=10)
@@ -303,7 +304,7 @@ class AdvancedMixin:
         if ud < 0:
             for v in self.player_vars.values():
                 v.set("—")
-            self.player_note.configure(text="This file's GameUserData isn't the known layout.")
+            self.player_note.configure(text="此存档的玩家数据结构未能识别。")
             return
         self.player_vars["gold"].set(str(f.u32(ud + core.GOLD_AT)))
         self.player_vars["renown"].set(str(f.u32(ud + core.RENOWN_AT)))
@@ -373,7 +374,7 @@ class AdvancedMixin:
         pane.add(side, weight=0)
         head = ttk.Frame(side, style="Card.TFrame")
         head.pack(fill="x")
-        ttk.Label(head, text="Units", style="CardH3.TLabel").pack(side="left")
+        ttk.Label(head, text='角色', style="CardH3.TLabel").pack(side="left")
         self.cls_count = ttk.Label(head, text="", style="CardMuted.TLabel")
         self.cls_count.pack(side="right")
         self.cls_search = ttk.Entry(side)
@@ -381,8 +382,8 @@ class AdvancedMixin:
         self.cls_search.bind("<KeyRelease>", lambda e: self.refresh_class_units())
         self.cls_unit_tree = ttk.Treeview(side, columns=("lv",), show="tree headings",
                                           selectmode="browse", height=20)
-        self.cls_unit_tree.heading("#0", text="Name", anchor="w")
-        self.cls_unit_tree.heading("lv", text="Lv", anchor="e")
+        self.cls_unit_tree.heading("#0", text='名称', anchor="w")
+        self.cls_unit_tree.heading("lv", text='等级', anchor="e")
         self.cls_unit_tree.column("#0", width=170)
         self.cls_unit_tree.column("lv", width=40, anchor="e", stretch=False)
         sb = ttk.Scrollbar(side, orient="vertical", command=self.cls_unit_tree.yview)
@@ -396,19 +397,19 @@ class AdvancedMixin:
 
         head = ttk.Frame(main, style="Card.TFrame", padding=(16, 12))
         head.pack(fill="x", padx=(10, 0))
-        self.cls_name = ttk.Label(head, text="No unit selected", style="CardH1.TLabel")
+        self.cls_name = ttk.Label(head, text='未选择角色', style="CardH1.TLabel")
         self.cls_name.pack(anchor="w")
         self.cls_sub = ttk.Label(head, text="", style="CardMuted.TLabel")
         self.cls_sub.pack(anchor="w", pady=(2, 0))
 
         cur = ttk.Frame(main, style="Card.TFrame", padding=(16, 10))
         cur.pack(fill="x", padx=(10, 0), pady=(8, 0))
-        ttk.Label(cur, text="Current class", style="Card.TLabel", width=13).pack(side="left")
+        ttk.Label(cur, text='当前职业', style="Card.TLabel", width=13).pack(side="left")
         self.cur_class_lbl = ttk.Label(cur, text="—", style="CardH3.TLabel")
         self.cur_class_lbl.pack(side="left")
         self.cur_class_jp = ttk.Label(cur, text="", style="CardFaint.TLabel")
         self.cur_class_jp.pack(side="left", padx=(10, 0))
-        ttk.Button(cur, text="Change…", style="Small.TButton",
+        ttk.Button(cur, text='更改…', style="Small.TButton",
                    command=self.change_current_class).pack(side="right")
 
         body = ttk.PanedWindow(main, orient="vertical")
@@ -418,16 +419,16 @@ class AdvancedMixin:
         body.add(cbox, weight=3)
         bar = ttk.Frame(cbox, style="Card.TFrame")
         bar.pack(fill="x")
-        ttk.Label(bar, text="Classes this unit has", style="CardH3.TLabel").pack(side="left")
+        ttk.Label(bar, text='角色拥有的职业', style="CardH3.TLabel").pack(side="left")
         for text, cmd in (("Add…", self.add_class), ("Swap…", self.swap_class),
                           ("Remove", self.remove_class), ("Set current", self.set_current_class)):
             ttk.Button(bar, text=text, style="Small.TButton", command=cmd).pack(side="right",
                                                                                padx=(6, 0))
         self.cls_tree = ttk.Treeview(cbox, columns=("value", "flags", "now"),
                                      show="tree headings", selectmode="browse")
-        self.cls_tree.heading("#0", text="Class", anchor="w")
-        self.cls_tree.heading("value", text="Value", anchor="e")
-        self.cls_tree.heading("flags", text="Flags", anchor="e")
+        self.cls_tree.heading("#0", text='职业', anchor="w")
+        self.cls_tree.heading("value", text='数值', anchor="e")
+        self.cls_tree.heading("flags", text='标记', anchor="e")
         self.cls_tree.heading("now", text="", anchor="center")
         self.cls_tree.column("#0", width=300)
         self.cls_tree.column("value", width=70, anchor="e", stretch=False)
@@ -443,17 +444,17 @@ class AdvancedMixin:
         body.add(mbox, weight=3)
         bar2 = ttk.Frame(mbox, style="Card.TFrame")
         bar2.pack(fill="x")
-        ttk.Label(bar2, text="Weapon masteries", style="CardH3.TLabel").pack(side="left")
+        ttk.Label(bar2, text='武器熟练度', style="CardH3.TLabel").pack(side="left")
         for text, cmd in (("Set rank…", self.set_mastery_rank), ("Set exp…", self.set_mastery_exp),
                           ("Add…", self.add_mastery), ("Remove", self.remove_mastery)):
             ttk.Button(bar2, text=text, style="Small.TButton", command=cmd).pack(side="right",
                                                                                padx=(6, 0))
         self.mas_tree = ttk.Treeview(mbox, columns=("rank", "exp", "next"),
                                      show="tree headings", selectmode="browse")
-        self.mas_tree.heading("#0", text="Weapon", anchor="w")
-        self.mas_tree.heading("rank", text="Rank", anchor="center")
-        self.mas_tree.heading("exp", text="Exp", anchor="e")
-        self.mas_tree.heading("next", text="Next rank at", anchor="e")
+        self.mas_tree.heading("#0", text='武器', anchor="w")
+        self.mas_tree.heading("rank", text='等级', anchor="center")
+        self.mas_tree.heading("exp", text='经验', anchor="e")
+        self.mas_tree.heading("next", text='下一级所需', anchor="e")
         self.mas_tree.column("#0", width=220)
         self.mas_tree.column("rank", width=60, anchor="center", stretch=False)
         self.mas_tree.column("exp", width=70, anchor="e", stretch=False)
@@ -539,7 +540,7 @@ class AdvancedMixin:
         self.cls_tree.delete(*self.cls_tree.get_children())
         self.mas_tree.delete(*self.mas_tree.get_children())
         if u is None or f is None:
-            self.cls_name.configure(text="No unit selected")
+            self.cls_name.configure(text='未选择角色')
             self.cur_class_lbl.configure(text="—")
             return
         self._cls_uid = u.start
@@ -577,7 +578,7 @@ class AdvancedMixin:
         u = self._cls_unit()
         if u is None:
             return
-        cid = self._picker("Pick the unit's current class", self._class_rows(), u.klass)
+        cid = self._picker("选择角色当前职业", self._class_rows(), u.klass)
         if cid is None:
             return
         self._set_current(u, cid)
@@ -613,7 +614,7 @@ class AdvancedMixin:
             return
         have = {c[0] for c in u.classes}
         rows = [r for r in self._class_rows() if r[0] not in have]
-        cid = self._picker("Add a class", rows)
+        cid = self._picker("添加职业", rows)
         if cid is None:
             return
 
@@ -730,7 +731,7 @@ class AdvancedMixin:
         if not rows:
             self.flash("The unit already has every weapon mastery.", "info")
             return
-        idx = self._picker("Add a weapon mastery", rows)
+        idx = self._picker("添加武器熟练度", rows)
         if idx is None:
             return
 
@@ -771,14 +772,14 @@ class AdvancedMixin:
         top.pack(fill="x")
         row = ttk.Frame(top, style="Card.TFrame")
         row.pack(fill="x")
-        ttk.Label(row, text="Saved flags", style="CardH3.TLabel").pack(side="left")
+        ttk.Label(row, text='存档标记', style="CardH3.TLabel").pack(side="left")
         self.flag_count = ttk.Label(row, text="", style="CardMuted.TLabel")
         self.flag_count.pack(side="left", padx=(10, 0))
-        ttk.Button(row, text="Add flag…", style="Small.TButton",
+        ttk.Button(row, text='添加标记…', style="Small.TButton",
                    command=self.add_flag).pack(side="right")
-        ttk.Button(row, text="Set value…", style="Small.TButton",
+        ttk.Button(row, text='设置数值…', style="Small.TButton",
                    command=self.set_flag_value).pack(side="right", padx=(6, 0))
-        ttk.Button(row, text="Remove", style="Small.TButton",
+        ttk.Button(row, text='移除', style="Small.TButton",
                    command=self.remove_flag).pack(side="right", padx=(6, 0))
         self.flag_search = ttk.Entry(top)
         self.flag_search.pack(fill="x", pady=(8, 6))
@@ -794,10 +795,10 @@ class AdvancedMixin:
         self.flag_filter = ""
         self.flag_tree = scrolled_tree(page, columns=("label", "value", "map"),
                                        show="tree headings", selectmode="browse")
-        self.flag_tree.heading("#0", text="Name", anchor="w")
-        self.flag_tree.heading("label", text="Reads as", anchor="w")
-        self.flag_tree.heading("value", text="Value", anchor="e")
-        self.flag_tree.heading("map", text="List", anchor="e")
+        self.flag_tree.heading("#0", text='名称', anchor="w")
+        self.flag_tree.heading("label", text='显示为', anchor="w")
+        self.flag_tree.heading("value", text='数值', anchor="e")
+        self.flag_tree.heading("map", text='列表', anchor="e")
         self.flag_tree.column("#0", width=260)
         self.flag_tree.column("label", width=360)
         self.flag_tree.column("value", width=80, anchor="e", stretch=False)
@@ -920,7 +921,7 @@ class AdvancedMixin:
         names = flag_names()
         rows = [(h, v.get("label") or v["name"], v["name"]) for h, v in names.items()]
         rows.sort(key=lambda r: str(r[1]).lower())
-        hash_ = self._picker("Add a flag", rows)
+        hash_ = self._picker("添加标记", rows)
         if hash_ is None:
             return
         val = _ask_number(self, "Flag value", "Value to store (0 – 254, or anything wider):",
@@ -999,7 +1000,7 @@ class AdvancedMixin:
         if not ranks:
             self.flash("This pair has no conversations in the game data.", "error")
             return
-        rank = self._picker("Forget which conversation?", ranks)
+        rank = self._picker("要清除哪段对话？", ranks)
         if rank:
             self.sup_clear_rank(rank)
 
@@ -1086,8 +1087,8 @@ def _ask_number(parent, title: str, prompt: str, current: int, limit: int):
 
     bar = ttk.Frame(win, padding=12)
     bar.pack(fill="x")
-    ttk.Button(bar, text="OK", style="Accent.TButton", command=ok).pack(side="right")
-    ttk.Button(bar, text="Cancel", command=win.destroy).pack(side="right", padx=(0, 8))
+    ttk.Button(bar, text='确定', style="Accent.TButton", command=ok).pack(side="right")
+    ttk.Button(bar, text='取消', command=win.destroy).pack(side="right", padx=(0, 8))
     ent.bind("<Return>", ok)
     if hasattr(parent, "place_dialog"):
         parent.place_dialog(win)
@@ -1207,7 +1208,7 @@ def restore_snapshot(self):
 def _build_skill_tab(self):
     """The record's skill lists (all six), each with add / remove."""
     tab = ttk.Frame(self.unit_tabs, style="Card.TFrame", padding=16)
-    self.unit_tabs.add(tab, text="Arts & skills")
+    self.unit_tabs.add(tab, text='战技与技能')
     grid = ttk.Frame(tab, style="Card.TFrame")
     grid.pack(fill="both", expand=True)
     self._skill_trees = {}
@@ -1243,14 +1244,14 @@ def refresh_skill_lists(self):
         for k, sid in enumerate(ids):
             tree.insert("", "end", iid=str(k), text="  " + layer.skill_label(sid))
         if not ids:
-            tree.insert("", "end", iid="none", text="  (empty)", tags=("empty",))
+            tree.insert("", "end", iid="none", text='  （空）', tags=("empty",))
 
 
 def add_skill(self, index: int):
     if not self.sv or self.uid is None:
         return
     # every entry in these lists is a skill / combat art id (SID_…), never an item
-    rows = [(h, m.get("en") or m.get("jp") or m.get("sid"), m.get("sid", ""))
+    rows = [(h, layer.skill_label(h), " ".join(filter(None, (m.get("en"), m.get("jp"), m.get("sid")))))
             for h, m in layer._skills().items()
             if not (m.get("sid") or "").startswith("SID_>") and (m.get("en") or m.get("jp"))]
     # skills with an English name first; internal / enemy-only entries after
@@ -1308,16 +1309,16 @@ def _build_mounts(self):
     pane.pack(fill="both", expand=True)
     left = ttk.Frame(pane, style="Card.TFrame", padding=12)
     pane.add(left, weight=3)
-    ttk.Label(left, text="Battalions & mounts", style="CardH3.TLabel").pack(anchor="w")
+    ttk.Label(left, text='兵团与坐骑', style="CardH3.TLabel").pack(anchor="w")
     ttk.Label(left, style="CardMuted.TLabel", wraplength=520, justify="left",
               text="Each unit carries one battalion (and, for mounted classes, one mount) at "
                    "the end of its record. Pick from the pool this save holds.").pack(
         anchor="w", pady=(2, 8))
     self.mount_tree = scrolled_tree(left, columns=("bat", "mount"), show="tree headings",
                                     selectmode="browse")
-    self.mount_tree.heading("#0", text="Unit", anchor="w")
-    self.mount_tree.heading("bat", text="Battalion", anchor="w")
-    self.mount_tree.heading("mount", text="Mount", anchor="w")
+    self.mount_tree.heading("#0", text='角色', anchor="w")
+    self.mount_tree.heading("bat", text='兵团', anchor="w")
+    self.mount_tree.heading("mount", text='坐骑', anchor="w")
     self.mount_tree.column("#0", width=190)
     self.mount_tree.column("bat", width=230)
     self.mount_tree.column("mount", width=140)
@@ -1325,23 +1326,23 @@ def _build_mounts(self):
 
     right = ttk.Frame(pane, style="Card.TFrame", padding=12)
     pane.add(right, weight=2)
-    ttk.Label(right, text="This save's pool", style="CardH3.TLabel").pack(anchor="w")
+    ttk.Label(right, text='此存档的资源池', style="CardH3.TLabel").pack(anchor="w")
     self.pool_tree = scrolled_tree(right, columns=("kind", "id"), show="tree headings",
                                    selectmode="browse")
-    self.pool_tree.heading("#0", text="Entry", anchor="w")
-    self.pool_tree.heading("kind", text="Kind", anchor="w")
-    self.pool_tree.heading("id", text="Record id", anchor="w")
+    self.pool_tree.heading("#0", text='条目', anchor="w")
+    self.pool_tree.heading("kind", text='种类', anchor="w")
+    self.pool_tree.heading("id", text='记录编号', anchor="w")
     self.pool_tree.column("#0", width=90)
     self.pool_tree.column("kind", width=80)
     self.pool_tree.column("id", width=190)
     self.pool_tree.container.pack(fill="both", expand=True, pady=(6, 6))
     row = ttk.Frame(right, style="Card.TFrame")
     row.pack(fill="x")
-    ttk.Button(row, text="Assign to unit", style="Small.TButton",
+    ttk.Button(row, text='分配给角色', style="Small.TButton",
                command=self.assign_battalion).pack(side="left")
-    ttk.Button(row, text="Clear unit's", style="Small.TButton",
+    ttk.Button(row, text='清除角色装备', style="Small.TButton",
                command=lambda: self.assign_battalion(clear=True)).pack(side="left", padx=(6, 0))
-    ttk.Button(row, text="Remove from pool", style="Small.TButton",
+    ttk.Button(row, text='从资源池移除', style="Small.TButton",
                command=self.remove_battalion).pack(side="left", padx=(6, 0))
 
 
@@ -1490,7 +1491,7 @@ def add_convoy_item_ui(self):
         return
     rows = [(h, layer.item_label(h, m), m.get("jp", "")) for h, m in layer.item_ids().items()]
     rows.sort(key=lambda r: str(r[1]).lower())
-    iid = self._picker("Add to the convoy", rows)
+    iid = self._picker("添加到仓库", rows)
     if iid is None:
         return
     qty = _ask_number(self, "Quantity", "How many?", 1, 999)
