@@ -47,9 +47,9 @@ STAT_MAX = 255          # the record parser rejects stat blocks with values >= 3
 SKILL_MAX = 9999        # find_skills() stops recognising a table above this
 QTY_MAX = 999           # quantities seen in real saves stay well under this
 
-STAT_LONG = {"HP": "Hit points", "Str": "Strength", "Mag": "Magic", "Dex": "Dexterity",
-             "Spd": "Speed", "Lck": "Luck", "Def": "Defense", "Res": "Resistance",
-             "Cha": "Charm"}
+STAT_LONG = {"HP": "生命值", "Str": "力量", "Mag": "魔力", "Dex": "技巧",
+             "Spd": "速度", "Lck": "幸运", "Def": "防守", "Res": "魔防",
+             "Cha": "魅力"}
 
 # --------------------------------------------------------------------------
 # look
@@ -76,7 +76,14 @@ KIND_COLORS = {
 GRADE_COLORS = ["#7b8494", "#8b93a3", "#5aa9e6", "#4c9be0", "#4fc29a", "#3fb489",
                 "#e3c04d", "#e0ab3a", "#f0884f", "#ec7040", "#e8557a", "#d9417e"]
 
-CAT_LABEL = {"weapon": "weapons", "accessory": "accessories", "consumable": "consumables"}
+CAT_LABEL = {"weapon": "武器", "accessory": "饰品", "consumable": "消耗品"}
+
+# display-only: the kind keys themselves stay English (they are logic keys for
+# filters, colours and slot locks); only what the user reads is translated
+KIND_ZH = {"Sword": "剑", "Lance": "枪", "Axe": "斧", "Bow": "弓", "Tome": "魔道书",
+           "Staff": "杖", "Fist": "格斗", "Shield": "盾", "Weapon": "武器",
+           "Accessory": "饰品", "Consumable": "消耗品", "Item": "道具", "Spell": "魔法"}
+KIND_OF = {v: k for k, v in KIND_ZH.items()}
 
 
 def _pick_family(candidates, fallback):
@@ -269,9 +276,9 @@ class ItemPicker(ttk.Frame):
         row = ttk.Frame(self, style="Card.TFrame")
         row.pack(fill="x")
         ttk.Label(row, text='类型', style="CardMuted.TLabel").pack(side="left")
-        self.kind_var = tk.StringVar(value="All types")
+        self.kind_var = tk.StringVar(value="全部类型")
         kb = ttk.Combobox(row, textvariable=self.kind_var, state="readonly", width=14,
-                          values=["All types"] + ITEM_KINDS)
+                          values=["全部类型"] + [KIND_ZH.get(k, k) for k in ITEM_KINDS])
         kb.pack(side="left", padx=(6, 12))
         kb.bind("<<ComboboxSelected>>", lambda e: self.refresh())
         app.register_combo(kb)
@@ -321,7 +328,7 @@ class ItemPicker(ttk.Frame):
                 self.tree.selection_set(kids[0])
                 iid = int(kids[0], 16)
         if iid is None:
-            self.app.flash("Pick an item from the catalogue first.", "warn")
+            self.app.flash("请先在目录中选择一个道具。", "warn")
             return
         self.on_activate(iid)
 
@@ -333,8 +340,8 @@ class ItemPicker(ttk.Frame):
         self.lock_category = None if allow_any or category in (None, "misc") else category
         if self.lock_category:
             self.lock_lbl.configure(
-                text=f"Showing {CAT_LABEL.get(self.lock_category, self.lock_category)} "
-                     "only, to match the selected slot.")
+                text=f"仅显示{CAT_LABEL.get(self.lock_category, self.lock_category)}，"
+                     "与所选槽位的类型一致。")
             self.lock_lbl.pack(fill="x", pady=(6, 0), after=self._lock_anchor)
         else:
             self.lock_lbl.pack_forget()
@@ -343,7 +350,8 @@ class ItemPicker(ttk.Frame):
     def refresh(self):
         q = self.search.get_query().lower()
         tokens = q.split()
-        kind = self.kind_var.get()
+        picked = self.kind_var.get()
+        kind = None if picked == "全部类型" else KIND_OF.get(picked)
         show_internal = self.app.show_internal.get()
         current_filter = (q, kind, show_internal, self.lock_category)
         if current_filter != self._last_filter:
@@ -354,7 +362,7 @@ class ItemPicker(ttk.Frame):
             iid, meta, en, jp, k, cat, shadow, blob = row
             if shadow and not show_internal:
                 continue
-            if kind != "All types" and k != kind:
+            if kind and k != kind:
                 continue
             if self.lock_category and cat != self.lock_category:
                 continue
@@ -378,7 +386,7 @@ class ItemPicker(ttk.Frame):
         for _s, _el, (iid, meta, en, jp, k, cat, shadow, blob) in hits[:self._result_limit]:
             self.tree.insert("", "end", iid=f"{iid:08x}", text=" " + en,
                              image=self.app.item_icon(iid, meta, k),
-                             values=(k, jp, f"{iid:08x}"))
+                             values=(KIND_ZH.get(k, k), jp, f"{iid:08x}"))
         if prev and self.tree.exists(prev[0]):
             self.tree.selection_set(prev[0])
             self.tree.see(prev[0])
@@ -820,16 +828,20 @@ class App(AdvancedMixin, tk.Tk):
     # ----------------------------------------------------------------- ui
     def _build(self):
         p = self.p
-        # ---- header
-        head = ttk.Frame(self, style="Header.TFrame", padding=(18, 12, 18, 10))
+        # ---- header: two rows, so the slot picker never has to share a row
+        # with the action buttons (on small windows pack squeezed the
+        # "Open folder…" button out of the window entirely)
+        head = ttk.Frame(self, style="Header.TFrame")
         head.pack(fill="x")
-        brand = ttk.Frame(head, style="Header.TFrame")
+        top = ttk.Frame(head, style="Header.TFrame", padding=(18, 12, 18, 4))
+        top.pack(fill="x")
+        brand = ttk.Frame(top, style="Header.TFrame")
         brand.pack(side="left")
         ttk.Label(brand, text="Fortune's Weave", style="Title.TLabel").pack(anchor="w")
         ttk.Label(brand, text=f"SAVE EDITOR  ·  v{__version__}",
                   style="Subtitle.TLabel").pack(anchor="w")
 
-        right = ttk.Frame(head, style="Header.TFrame")
+        right = ttk.Frame(top, style="Header.TFrame")
         right.pack(side="right")
         self.theme_btn = ttk.Button(right, text="☀" if self.theme_name() == "dark" else "☾",
                                     width=3, style="Icon.TButton", command=self.toggle_theme)
@@ -842,14 +854,18 @@ class App(AdvancedMixin, tk.Tk):
         ttk.Button(right, text='创建快照', command=self.take_snapshot).pack(side="right", padx=(0, 8))
         ttk.Button(right, text='恢复快照…', command=self.restore_snapshot).pack(side="right")
 
-        mid = ttk.Frame(head, style="Header.TFrame")
-        mid.pack(side="left", padx=(32, 0), fill="x", expand=True)
+        mid = ttk.Frame(head, style="Header.TFrame", padding=(18, 6, 18, 10))
+        mid.pack(fill="x")
         r1 = ttk.Frame(mid, style="Header.TFrame")
         r1.pack(fill="x")
         ttk.Label(r1, text='存档槽位', style="Side.TLabel").pack(side="left")
         self.slot_var = tk.StringVar()
-        self.slot_box = ttk.Combobox(r1, textvariable=self.slot_var, state="readonly", width=52)
-        self.slot_box.pack(side="left", padx=(8, 8))
+        # width is a character count and its pixel size varies by Tk version and
+        # platform; a fixed 52 columns overflows the header on Tk 9 / macOS and
+        # pushes the button after the box out of the window, so keep the base
+        # short and let the box stretch to whatever space the row has left
+        self.slot_box = ttk.Combobox(r1, textvariable=self.slot_var, state="readonly", width=28)
+        self.slot_box.pack(side="left", padx=(8, 8), fill="x", expand=True)
         self.slot_box.bind("<<ComboboxSelected>>", self.on_slot_pick)
         self.register_combo(self.slot_box)
         ttk.Button(r1, text='打开文件夹…', command=self.open_dialog).pack(side="left")
@@ -977,11 +993,11 @@ class App(AdvancedMixin, tk.Tk):
         row = ttk.Frame(tab, style="Card.TFrame")
         row.pack(fill="x")
         self.lvl_var, self.exp_var = tk.StringVar(), tk.StringVar()
-        for label, var, fn, lo, hi in (("Level", self.lvl_var, self.commit_level, 1, 99),
-                                       ("EXP", self.exp_var, self.commit_exp, 0, 99)):
+        for label, var, fn, lo, hi in (("等级", self.lvl_var, self.commit_level, 1, 99),
+                                       ("经验", self.exp_var, self.commit_exp, 0, 99)):
             box = ttk.Frame(row, style="Card.TFrame")
             box.pack(side="left", padx=(0, 28))
-            ttk.Label(box, text=label.upper(), style="StatName.TLabel").pack(anchor="w")
+            ttk.Label(box, text=label, style="StatName.TLabel").pack(anchor="w")
             sp = ttk.Spinbox(box, from_=lo, to=hi, width=6, textvariable=var, command=fn,
                              validate="key", validatecommand=vcmd, style="Stat.TSpinbox")
             sp.pack(anchor="w", pady=(4, 0))
@@ -1012,9 +1028,8 @@ class App(AdvancedMixin, tk.Tk):
             grid.columnconfigure(i % 3, weight=1, uniform="stat")
             head = ttk.Frame(cell, style="Card.TFrame")
             head.pack(fill="x")
-            ttk.Label(head, text=name.upper(), style="StatName.TLabel").pack(side="left")
-            ttk.Label(head, text=STAT_LONG.get(name, ""), style="CardFaint.TLabel"
-                      ).pack(side="left", padx=(6, 0))
+            ttk.Label(head, text=STAT_LONG.get(name, name), style="StatName.TLabel"
+                      ).pack(side="left")
             body = ttk.Frame(cell, style="Card.TFrame")
             body.pack(fill="x", pady=(4, 0))
             v = tk.StringVar()
@@ -1123,9 +1138,8 @@ class App(AdvancedMixin, tk.Tk):
         ctl = ttk.Frame(left, style="Card.TFrame")
         ctl.pack(side="bottom", fill="x", pady=(10, 0))
         ttk.Label(left, style="CardFaint.TLabel", wraplength=420, justify="left",
-                  text="Add item… puts a new stack into the first empty slot and Remove "
-                       "empties a slot, the way the game does it: the list keeps its slot "
-                       "count and everything after it is moved safely."
+                  text="“添加道具…”把新的一叠道具放进第一个空槽位，“移除”则清空一个槽位，"
+                       "与游戏的存取方式一致：槽位总数保持不变，其后的内容都会安全移动。"
                   ).pack(side="bottom", anchor="w", pady=(8, 0))
         self.conv_tree = scrolled_tree(left, columns=("kind", "qty"), show="tree headings",
                                        selectmode="extended", height=6)
@@ -1181,9 +1195,8 @@ class App(AdvancedMixin, tk.Tk):
                        ).pack(side="left", padx=(8 if amt == 10_000 else 4, 0))
 
         ttk.Label(wrap, style="CardFaint.TLabel", wraplength=760, justify="left",
-                  text="Gold lives at a fixed place in every slot of this game (GameUserData "
-                       "+ 6), so there is nothing to locate: the amount below is what the game "
-                       "will read. Chapter and battle snapshots keep their own amount."
+                  text="金钱在此游戏的每个槽位里位置固定（GameUserData + 6），无需定位："
+                       "上方显示的数值就是游戏会读到的值。章节与战斗快照保留各自的金额。"
                   ).pack(anchor="w", pady=(12, 0))
 
     # --------------------------------------------------------- keys / misc
@@ -1268,15 +1281,12 @@ class App(AdvancedMixin, tk.Tk):
         self.sup_write_lbl.pack(side="left", padx=(12, 0))
 
         ttk.Label(main, style="CardFaint.TLabel", justify="left", wraplength=780,
-                  text="The pair list and each pair's highest rank come from the game data "
-                       "(GameData/Reliance.bin and the 支援会話 flag names); a rank in the "
-                       "“seen” column means this save holds the matching conversation flag. "
-                       "Recording a conversation writes that flag — the same thing the game does "
-                       "when the conversation is seen — so the support should read as available "
-                       "in-game (the level itself is not a number this save exposes). The "
-                       "in-game Support screen also lists partners whose support has no "
-                       "conversation at all; those pairs aren't named in the data, so they "
-                       "can't appear here."
+                  text="配对列表与每对的最高等级来自游戏数据（GameData/Reliance.bin 和 "
+                       "支援会話 标记名）；“已观看对话”列里出现的等级表示此存档记录了对应的"
+                       "对话标记。把对话标记为已观看，写入的就是那个标记——与游戏观看对话时的"
+                       "做法相同——因此游戏内的支援应显示为可用（支援等级本身不是此存档直接"
+                       "暴露的数值）。游戏内支援画面还会列出支援完全没有对话的对象；这些配对"
+                       "在数据中没有名字，因此无法在此显示。"
                   ).pack(anchor="w", padx=(12, 0), pady=(10, 0))
 
     def _party_pids(self) -> set[str]:
@@ -1331,8 +1341,7 @@ class App(AdvancedMixin, tk.Tk):
             self._sup_rows[iid] = (jp, rec)
             n += 1
             first = first or iid
-        self.sup_count.configure(text=f"{n} character{'s' if n != 1 else ''}"
-                                       + (" in this save" if party is not None else ""))
+        self.sup_count.configure(text=f"{n} 名角色" + ("（本存档中）" if party is not None else ""))
         if first:
             self.sup_char_tree.selection_set(first)
             self.on_support_char()
@@ -1373,8 +1382,7 @@ class App(AdvancedMixin, tk.Tk):
                                     dict(pa.get("flags") or {}))
         self._paint_support_tags()
         self.sup_sub.configure(
-            text=f"{len(rec['partners'])} conversation pairs · up to {best or '—'} · "
-                 f"{seen_pairs} recorded in this save")
+            text=f"{len(rec['partners'])} 组对话 · 最高 {best or '—'} · 本存档已记录 {seen_pairs} 组")
 
     def _paint_support_tags(self):
         p = self.p
@@ -1422,15 +1430,14 @@ class App(AdvancedMixin, tk.Tk):
 
     def _mirror_changed(self):
         self._save_settings()
-        self.flash("Edits now also go into this route's other saves (never chapter "
-                   "checkpoints)." if self.mirror.get()
-                   else "Edits now go into the selected slot only.")
+        self.flash("编辑现在会同时写入此线路的其他存档（绝不写入章节检查点）。"
+                   if self.mirror.get() else "编辑现在只写入当前选中的槽位。")
 
     def _show_welcome(self):
         self.unit_name.configure(text='未打开存档文件夹')
-        self.unit_sub.configure(text="Use “Open folder…” (Ctrl+O) and pick any slot file "
-                                     "(Auto, Chapter_*, Route_*) inside your save folder.")
-        self.flash("No Eden save folder found automatically — open one to begin.", "warn")
+        self.unit_sub.configure(text="请使用“打开文件夹…”（Ctrl+O），选择存档文件夹中的"
+                                     "任意槽位文件（Auto、Chapter_*、Route_*）。")
+        self.flash("未自动找到 Eden 存档文件夹——请手动打开一个再开始。", "warn")
 
     # ============================================================== files
     def _slot_files(self, folder: str) -> list[str]:
@@ -1457,7 +1464,7 @@ class App(AdvancedMixin, tk.Tk):
             sv = SaveFile(key)
         except Exception as exc:  # noqa: BLE001 — any unreadable slot is just skipped
             self.files.pop(key, None)
-            self.flash(f"Can't read {os.path.basename(key)}: {exc}", "error")
+            self.flash(f"无法读取 {os.path.basename(key)}：{exc}", "error")
             return None
         self.files[key] = sv
         self.mtimes[key] = mtime
@@ -1467,19 +1474,22 @@ class App(AdvancedMixin, tk.Tk):
         if not self._confirm_discard("open another folder"):
             return
         start = self.folder or default_save_dir() or os.path.expanduser("~")
-        path = filedialog.askopenfilename(
-            parent=self, initialdir=start, title="Open any slot in your save folder",
-            filetypes=[("Save slots", "Auto Chapter_* Route_*"), ("All files", "*.*")])
-        if not path:
+        # a directory picker, not a file picker: the slot files have no
+        # extension, and the glob patterns Tk filetypes accept don't match
+        # them in the macOS panel (every slot was greyed out), so there was
+        # no way to pick anything at all
+        folder = filedialog.askdirectory(parent=self, initialdir=start,
+                                         title="选择存档文件夹")
+        if not folder:
             return
-        self.open_folder(os.path.dirname(path), prefer=path)
+        self.open_folder(folder)
 
     def open_folder(self, folder: str, prefer: str | None = None):
         slots = self._slot_files(folder)
         if not slots and prefer:
             slots = [prefer]
         if not slots:
-            messagebox.showerror(APP_NAME, f"No Auto / Chapter_* / Route_* slots in\n{folder}")
+            messagebox.showerror(APP_NAME, f"文件夹中没有 Auto / Chapter_* / Route_* 槽位：\n{folder}")
             return
         self.config(cursor="watch")
         self.update_idletasks()
@@ -1539,11 +1549,11 @@ class App(AdvancedMixin, tk.Tk):
         self._update_file_label()
         peers = [os.path.basename(p) for p in self._peers()]
         if self._is_checkpoint(path):
-            text = "Also edit this route's other saves (off in checkpoints)"
+            text = "同时编辑此线路的其他存档（检查点中不生效）"
         elif peers:
-            text = f"Also edit this route's other saves (+ {', '.join(peers)})"
+            text = f"同时编辑此线路的其他存档（+ {', '.join(peers)}）"
         else:
-            text = "Also edit this route's other saves (none here)"
+            text = "同时编辑此线路的其他存档（本文件夹没有）"
         self.mirror_chk.configure(text=text)
         self.refresh_units(keep=keep)
         self.refresh_convoy()
@@ -1552,7 +1562,7 @@ class App(AdvancedMixin, tk.Tk):
         self.refresh_core_pages()
         self.refresh_mounts()
         self._update_dirty()
-        self.flash(f"Opened {os.path.basename(path)} — {self._visible_units()} units.")
+        self.flash(f"已打开 {os.path.basename(path)} —— {self._visible_units()} 名角色。")
 
     def _update_file_label(self):
         if not self.sv:
@@ -1593,21 +1603,21 @@ class App(AdvancedMixin, tk.Tk):
                 if self.sv is not None and self.sv.path in clean:
                     self._shown, self._skill_rows = {}, []
                     self.load(self.sv.path)
-                self.flash("Picked up a newer save from the game: "
+                self.flash("已读取游戏新保存的存档："
                            + ", ".join(os.path.basename(p) for p in clean), "ok")
             if len(clean) < len(changed):
-                self.flash("The game saved a slot you have unsaved edits in. Saving now "
-                           "would overwrite the game's progress. Reload to start again "
-                           "from the game's save.", "warn")
+                self.flash("游戏保存了你有未保存编辑的槽位。现在保存会覆盖游戏的进度；"
+                           "请按“重新加载”，从游戏的存档重新开始。", "warn")
         finally:
             self._checking = False
 
     def _confirm_discard(self, what: str) -> bool:
+        what = {"quit": "退出", "open another folder": "打开其他文件夹"}.get(what, what)
         if not self.dirty:
             return True
         ans = messagebox.askyesnocancel(
-            APP_NAME, f"{len(self.dirty)} slot(s) have unsaved changes.\n\n"
-                      f"Save them before you {what}?", parent=self)
+            APP_NAME, f"{len(self.dirty)} 个槽位有未保存的更改。\n\n"
+                      f"要在{what}之前保存吗？", parent=self)
         if ans is None:
             return False
         if ans:
@@ -1618,30 +1628,29 @@ class App(AdvancedMixin, tk.Tk):
         if not self.folder:
             return
         if self.dirty and not messagebox.askyesno(
-                APP_NAME, f"Reload from disk and throw away the unsaved changes in "
-                          f"{len(self.dirty)} slot(s)?", parent=self):
+                APP_NAME, f"从磁盘重新读取，并丢弃 {len(self.dirty)} 个槽位的未保存更改？",
+                parent=self):
             return
         cur = self.sv.path if self.sv else None
         self._shown, self._skill_rows = {}, []    # don't write the form into fresh data
         self.open_folder(self.folder, prefer=cur)
-        self.flash("Re-read every slot from disk.", "ok")
+        self.flash("已从磁盘重新读取全部槽位。", "ok")
 
     def save_all(self) -> bool:
         if not self.sv:
             return False
         self._commit_form()
         if not self.dirty:
-            self.flash("Nothing to save — no changes yet.")
+            self.flash("没有未保存的更改。")
             return True
         newer = [p for p in self.dirty if self._changed_on_disk(p)]
         if newer and not messagebox.askyesno(
-                APP_NAME, "The game has saved " + ", ".join(os.path.basename(p) for p in newer)
-                + " since the editor read it.\n\nSaving now would replace that newer save "
-                  "with the editor's older copy plus your edits, and anything you did in "
-                  "game since would be lost.\n\nOverwrite anyway? (No = keep the game's "
-                  "save; then press Reload and redo your edits.)", icon="warning", parent=self):
-            self.flash("Not saved — the game's newer save was kept. Press Reload, then redo "
-                       "your edits.", "warn")
+                APP_NAME, "自编辑器读取以来，游戏又保存了 "
+                + ", ".join(os.path.basename(p) for p in newer)
+                + "。\n\n现在保存会用编辑器手中的旧副本（加上你的编辑）覆盖那份更新的存档，"
+                  "游戏内的进度将会丢失。\n\n仍要覆盖吗？（选“否”=保留游戏的存档；"
+                  "然后按“重新加载”，重新做你的编辑。）", icon="warning", parent=self):
+            self.flash("未保存——已保留游戏更新的存档。请按“重新加载”后重新编辑。", "warn")
             return False
         written, failed = [], []
         for pth in sorted(self.dirty, key=os.path.basename):
@@ -1659,10 +1668,10 @@ class App(AdvancedMixin, tk.Tk):
         self._update_file_label()
         self._update_dirty()
         if failed:
-            messagebox.showerror(APP_NAME, "Some slots could not be written:\n\n"
-                                 + "\n".join(failed) + "\n\nIs the game still running?")
+            messagebox.showerror(APP_NAME, "以下槽位写入失败：\n\n"
+                                 + "\n".join(failed) + "\n\n游戏是否仍在运行？")
             return False
-        self.flash(f"Saved {', '.join(written)}. Originals kept as .bak next to each slot.",
+        self.flash(f"已保存 {', '.join(written)}。各槽位旁的 .bak 保留着原始存档。",
                    "ok")
         return True
 
@@ -1676,9 +1685,9 @@ class App(AdvancedMixin, tk.Tk):
     def _update_dirty(self):
         n = len(self.dirty)
         if n:
-            self.dirty_lbl.configure(text=f"● {n} slot{'s' if n > 1 else ''} with unsaved "
-                                          "changes  ·  Ctrl+S to save", style="StatusWarn.TLabel")
-            self.save_btn.configure(text=f"Save ({n})", state="normal")
+            self.dirty_lbl.configure(text=f"● {n} 个槽位有未保存更改  ·  Ctrl+S 保存",
+                                     style="StatusWarn.TLabel")
+            self.save_btn.configure(text=f"保存 ({n})", state="normal")
         else:
             self.dirty_lbl.configure(text="所有更改已保存" if self.sv else "",
                                      style="Status.TLabel")
@@ -1751,8 +1760,8 @@ class App(AdvancedMixin, tk.Tk):
         found one field off for some), so they can be viewed but not edited."""
         u = self._current()
         if u is not None and is_enemy(u):
-            self.flash("Enemy and NPC records are read-only — their layout isn't fully "
-                       "known, so an edit could land on the wrong bytes.", "warn")
+            self.flash("敌人与 NPC 的记录为只读——其布局尚未完全解析，修改可能写错位置。",
+                       "warn")
             return True
         return False
 
@@ -1777,8 +1786,8 @@ class App(AdvancedMixin, tk.Tk):
         return copies, len(touched)
 
     def _where(self, copies: int, slots: int) -> str:
-        c = f"{copies} cop{'y' if copies == 1 else 'ies'}"
-        return c if slots <= 1 else f"{c} in {slots} slots"
+        c = f"{copies} 处记录"
+        return c if slots <= 1 else f"{c}，{slots} 个槽位"
 
     # ============================================================== units
     def _unit_map(self) -> dict[int, object]:
@@ -1866,7 +1875,7 @@ class App(AdvancedMixin, tk.Tk):
         self.avatar.show(u.name, u.pid)
         self.unit_name.configure(text=u.name)
         pid = u.pid.replace("PID_", "")
-        self.unit_sub.configure(text=f"{u.job}   ·   Level {u.level}   ·   {pid}")
+        self.unit_sub.configure(text=f"{u.job}   ·   等级 {u.level}   ·   {pid}")
         # what the form shows; a field only writes when it differs from this, so
         # tabbing through fields never copies untouched values into other slots
         self._shown = {"lvl": u.level, "exp": u.exp, **dict(enumerate(u.stats))}
@@ -1894,7 +1903,7 @@ class App(AdvancedMixin, tk.Tk):
             self.copies_chip.configure(text='🔒 敌人 / NPC — 只读', style="ChipWarn.TLabel")
         else:
             self.copies_chip.configure(
-                text=f"live record · {u.job}", style="Chip.TLabel")
+                text=f"当前记录 · {u.job}", style="Chip.TLabel")
 
 
     def _num(self, var, lo, hi):
@@ -1916,7 +1925,7 @@ class App(AdvancedMixin, tk.Tk):
 
     def _bad_input(self, var, lo, hi, current, label):
         var.set(str(current))
-        self.flash(f"{label} must be a number from {lo} to {hi}.", "warn")
+        self.flash(f"{label}必须是 {lo} 到 {hi} 之间的数字。", "warn")
 
     def commit_level(self):
         u = self._current()
@@ -1924,7 +1933,7 @@ class App(AdvancedMixin, tk.Tk):
             return
         v = self._num(self.lvl_var, 1, 99)
         if v is None:
-            return self._bad_input(self.lvl_var, 1, 99, u.level, "Level")
+            return self._bad_input(self.lvl_var, 1, 99, u.level, "等级")
         if v == self._shown.get("lvl"):
             return
         self._shown["lvl"] = v
@@ -1937,9 +1946,9 @@ class App(AdvancedMixin, tk.Tk):
         n, s = self._edit_units(fn)
         if n:
             self._tree_lv(u.uid, v)
-            self.unit_sub.configure(text=f"{u.job}   ·   Level {v}   ·   {u.pid.replace('PID_', '')}")
+            self.unit_sub.configure(text=f"{u.job}   ·   等级 {v}   ·   {u.pid.replace('PID_', '')}")
             self._update_copies_chip(u)
-            self.flash(f"{u.name}: level → {v}  ({self._where(n, s)})")
+            self.flash(f"{u.name}：等级 → {v}（{self._where(n, s)}）")
 
     def commit_exp(self):
         u = self._current()
@@ -1947,7 +1956,7 @@ class App(AdvancedMixin, tk.Tk):
             return
         v = self._num(self.exp_var, 0, 99)
         if v is None:
-            return self._bad_input(self.exp_var, 0, 99, u.exp, "EXP")
+            return self._bad_input(self.exp_var, 0, 99, u.exp, "经验")
         if v == self._shown.get("exp"):
             return
         self._shown["exp"] = v
@@ -1961,7 +1970,7 @@ class App(AdvancedMixin, tk.Tk):
         self.exp_bar.set(min(v, 100) / 100)
         if n:
             self._update_copies_chip(u)
-            self.flash(f"{u.name}: EXP → {v}  ({self._where(n, s)})")
+            self.flash(f"{u.name}：经验 → {v}（{self._where(n, s)}）")
 
     def commit_stat(self, i: int):
         u = self._current()
@@ -1970,7 +1979,7 @@ class App(AdvancedMixin, tk.Tk):
             return
         v = self._num(var, 0, STAT_MAX)
         if v is None:
-            return self._bad_input(var, 0, STAT_MAX, u.stats[i], STAT_NAMES[i])
+            return self._bad_input(var, 0, STAT_MAX, u.stats[i], STAT_LONG[STAT_NAMES[i]])
         if v == self._shown.get(i):
             return
         self._shown[i] = v
@@ -1989,7 +1998,7 @@ class App(AdvancedMixin, tk.Tk):
             bar.set(u.stats[k] / top)
         if n:
             self._update_copies_chip(u)
-            self.flash(f"{u.name}: {STAT_LONG[STAT_NAMES[i]]} → {v}  ({self._where(n, s)})")
+            self.flash(f"{u.name}：{STAT_LONG[STAT_NAMES[i]]} → {v}（{self._where(n, s)}）")
 
     @staticmethod
     def _move_max_hp(r, sv, delta: int):
@@ -2007,7 +2016,7 @@ class App(AdvancedMixin, tk.Tk):
         ex = self._num(self.exp_var, 0, 255)
         stats = [self._num(v, 0, STAT_MAX) for v in self.stat_vars]
         if lv is None or ex is None or None in stats:
-            self.flash("One of the fields isn't a valid number.", "warn")
+            self.flash("某个字段不是有效的数字。", "warn")
             return
 
         def fn(r, sv):
@@ -2022,8 +2031,7 @@ class App(AdvancedMixin, tk.Tk):
         self._shown = {"lvl": lv, "exp": ex, **dict(enumerate(stats))}
         self._tree_lv(u.uid, lv)
         self._update_copies_chip(u)
-        self.flash(f"{u.name}: every copy now matches the values shown ({self._where(n, s)})",
-                   "ok")
+        self.flash(f"{u.name}：所有副本已与显示的数值一致（{self._where(n, s)}）", "ok")
 
     # ---------------------------------------------------------- ranks
     def refresh_skills(self):
@@ -2056,7 +2064,8 @@ class App(AdvancedMixin, tk.Tk):
             meta = names.get(iid, {})
             kind = item_kind(meta) if meta else "Item"
             tree.insert("", "end", iid=f"i{n}", text=f" {n + 1}.  {item_label(iid, meta)}",
-                        image=self.item_icon(iid, meta, kind), values=(kind,))
+                        image=self.item_icon(iid, meta, kind),
+                        values=(KIND_ZH.get(kind, kind),))
         if not inv.items:
             tree.insert("", "end", iid="none", text='  没有携带道具', tags=("empty",))
         if inv.spells:
@@ -2065,7 +2074,7 @@ class App(AdvancedMixin, tk.Tk):
             for n, (_off, iid, _tag) in enumerate(inv.spells):
                 meta = names.get(iid, {})
                 tree.insert("", "end", iid=f"s{n}", text="      " + item_label(iid, meta),
-                            image=self._dot(KIND_COLORS["Tome"]), values=("Spell",),
+                            image=self._dot(KIND_COLORS["Tome"]), values=("魔法",),
                             tags=("empty",))
         if prev and tree.exists(prev[0]) and prev[0].startswith("i"):
             tree.selection_set(prev[0])
@@ -2088,11 +2097,11 @@ class App(AdvancedMixin, tk.Tk):
         idx = self._inv_slot()
         u = self._current()
         if u is None or idx is None:
-            self.flash("Pick an inventory slot first.", "warn")
+            self.flash("请先选择一个背包槽位。", "warn")
             return
         old = self._inv_items[idx][1] if idx < len(self._inv_items) else None
         if new_id == old:
-            self.flash("That slot already holds this item.")
+            self.flash("该槽位已经是这个道具。")
             return
         self.push_undo()
         changed = False
@@ -2102,20 +2111,20 @@ class App(AdvancedMixin, tk.Tk):
                 sv._core_cache = None
                 changed = True
         if not changed:
-            self.flash("Nothing changed — that unit has no such item slot here.", "warn")
+            self.flash("没有更改——该角色在这个存档里没有这个道具栏。", "warn")
             return
         self._touch(self._targets())
         self.refresh_inventory()
-        self.flash(f"{u.name}: slot {idx + 1} → {item_label(new_id)}")
+        self.flash(f"{u.name}：槽位 {idx + 1} → {item_label(new_id)}")
 
     def add_item(self):
         u = self._current()
         if u is None:
-            self.flash("Pick a unit first.", "warn")
+            self.flash("请先选择一个角色。", "warn")
             return
         new_id = self.inv_picker.selected()
         if new_id is None:
-            self.flash("Pick an item from the catalogue first.", "warn")
+            self.flash("请先在目录中选择一个道具。", "warn")
             return
         self.push_undo()
         for sv in self._targets():
@@ -2124,13 +2133,13 @@ class App(AdvancedMixin, tk.Tk):
             sv._core_cache = None
         self._touch(self._targets())
         self.refresh_inventory()
-        self.flash(f"{u.name}: added {item_label(new_id)}")
+        self.flash(f"{u.name}：已添加 {item_label(new_id)}")
 
     def remove_item(self):
         idx = self._inv_slot()
         u = self._current()
         if u is None or idx is None:
-            self.flash("Pick an inventory slot first.", "warn")
+            self.flash("请先选择一个背包槽位。", "warn")
             return
         self.push_undo()
         for sv in self._targets():
@@ -2139,7 +2148,7 @@ class App(AdvancedMixin, tk.Tk):
             sv._core_cache = None
         self._touch(self._targets())
         self.refresh_inventory()
-        self.flash(f"{u.name}: removed the item in slot {idx + 1}")
+        self.flash(f"{u.name}：已移除槽位 {idx + 1} 的道具")
 
 
     # ----------------------------------------------------------- class
@@ -2174,22 +2183,22 @@ class App(AdvancedMixin, tk.Tk):
         u = self._current()
         sel = self.class_tree.selection()
         if not u or not sel:
-            self.flash("Pick a class from the list first.", "warn")
+            self.flash("请先在列表中选择一个职业。", "warn")
             return
         if self._read_only():
             return
         new_hash = int(sel[0], 16)
         if new_hash == u.job_hash:
-            self.flash(f"{u.name} is already a {u.job}.")
+            self.flash(f"{u.name} 已经是 {u.job} 了。")
             return
         name = job_name(new_hash)
         n = len(self._targets())
-        scope = f"{n} saves of this route" if n > 1 else "this slot"
+        scope = f"此线路的 {n} 个存档" if n > 1 else "此槽位"
         if not messagebox.askyesno(
-                "Change class",
-                f"Change {u.name} from {u.job} to {name} in {scope}?\n\n"
-                "Only the class id is written. Movement, usable weapons, class skills and "
-                "max HP are not recalculated. Nothing hits the disk until you Save.",
+                "更改职业",
+                f"将 {u.name} 从 {u.job} 改为 {name}（{scope}）？\n\n"
+                "只写入职业编号，不会重新计算移动力、可用武器、职业技能和最大生命值。"
+                "保存之前不会写入磁盘。",
                 parent=self):
             return
         touched, ids = [], 0
@@ -2199,7 +2208,7 @@ class App(AdvancedMixin, tk.Tk):
                 ids += hit
                 touched.append(sv)
         self._touch(touched)
-        self.flash(f"{u.name}: class → {name}  ({ids} ids in {len(touched)} slot(s))")
+        self.flash(f"{u.name}：职业 → {name}（{ids} 处记录，{len(touched)} 个槽位）")
         self.show_unit()
 
     # ========================================================== convoy
@@ -2223,27 +2232,27 @@ class App(AdvancedMixin, tk.Tk):
                              for t in q.split()):
                 continue
             tree.insert("", "end", iid=str(row.slot), text=f" {row.slot + 1:>4} · {label}",
-                        image=self.item_icon(row.iid, meta, kind), values=(kind, row.qty))
+                        image=self.item_icon(row.iid, meta, kind),
+                        values=(KIND_ZH.get(kind, kind), row.qty))
             shown += 1
         salvage = None
         if conv is None and self.sv:
             salvage = layer.salvage_convoy(bytes(self.sv.payload))
         if conv is None:
             tree.insert("", "end", iid="none",
-                        text="  This slot's convoy list is damaged — see above" if salvage
-                        else "  No convoy list found in this slot", tags=("empty",))
+                        text="  此槽位的仓库列表已损坏——见上方说明" if salvage
+                        else "  此槽位中没有仓库列表", tags=("empty",))
         total = len(self._conv_rows)
         self.conv_count.configure(text="" if conv is None else
-                                  f"{total} items · {conv.slots} slots" if shown == total
-                                  else f"{shown} of {total} items")
+                                  f"{total} 件道具 · {conv.slots} 个槽位" if shown == total
+                                  else f"{shown} / {total} 件道具")
         if salvage:
             n_items = sum(1 for sl in salvage[1] if sl.item)
             self.conv_problem_lbl.configure(
-                text="⚠ This convoy list is damaged: an older version's “Add” wrote an item "
-                     "over empty slots and knocked the rest of the list out of line, so the "
-                     f"game can't read it. Repair rebuilds it as a clean {salvage[0]}-slot "
-                     f"list keeping all {n_items} items it can still find. Undo works, and "
-                     "the original stays in the slot's .bak.")
+                text="⚠ 此存档的仓库列表已损坏：旧版本的“添加”把道具直接写在空槽位上，"
+                     "导致其后的列表错位，游戏无法读取。“修复仓库”会把它重建为干净的 "
+                     f"{salvage[0]} 槽位列表，并保留仍能找到的 {n_items} 件道具。"
+                     "撤销可用，原始文件保留在槽位的 .bak 中。")
             self.conv_repair_btn.pack(anchor="w", pady=(6, 0))
             self.conv_problem.pack(fill="x", pady=(0, 6), before=self.conv_filter)
         else:
@@ -2256,20 +2265,20 @@ class App(AdvancedMixin, tk.Tk):
     def repair_convoy_ui(self):
         got = layer.salvage_convoy(bytes(self.sv.payload)) if self.sv else None
         if not got:
-            self.flash("This slot's convoy doesn't need repairing.")
+            self.flash("此槽位的仓库不需要修复。")
             return
         n_items = sum(1 for sl in got[1] if sl.item)
         if not messagebox.askyesno(
-                "Repair convoy",
-                f"Rebuild this slot's convoy as a clean {got[0]}-slot list with the "
-                f"{n_items} items found in it?\n\nNothing is written until you Save, "
-                "Undo can take it back, and the original stays in the slot's .bak.",
+                "修复仓库",
+                f"将此槽位的仓库重建为 {got[0]} 个槽位的干净列表，保留找到的 "
+                f"{n_items} 件道具？\n\n保存之前不会写入磁盘，可以撤销，"
+                "原始文件保留在槽位的 .bak 中。",
                 parent=self):
             return
         self.push_undo()
         if self._core_edit(lambda f: (layer.repair_convoy(f.payload) >= 0 and f.payload) or None,
-                           "Repair convoy"):
-            self.flash(f"Convoy repaired: {n_items} items, {got[0]} slots — Ctrl+S to write it.",
+                           "修复仓库"):
+            self.flash(f"仓库已修复：{n_items} 件道具、{got[0]} 个槽位——按 Ctrl+S 写入。",
                        "ok")
         self.refresh_convoy()
 
@@ -2289,7 +2298,7 @@ class App(AdvancedMixin, tk.Tk):
     def _qty(self) -> int | None:
         v = self._num(self.qty_var, 1, QTY_MAX)
         if v is None:
-            self.flash(f"Quantity must be 1 – {QTY_MAX}.", "warn")
+            self.flash(f"数量必须是 1 – {QTY_MAX}。", "warn")
         return v
 
     def _convoy_edit(self, slots: list[int], fn) -> int:
@@ -2318,30 +2327,29 @@ class App(AdvancedMixin, tk.Tk):
     def replace_convoy(self, iid: int):
         slots = self._conv_selected()
         if len(slots) != 1:
-            self.flash("Select one convoy row to replace (any spare item you put there in "
-                       "game).", "warn")
+            self.flash("请选择一个要替换的仓库行。", "warn")
             return
         row = self._conv_row(slots[0])
         if row.iid == iid:
-            self.flash("That row already holds this item.")
+            self.flash("该行已经是这个道具。")
             return
         old = item_label(row.iid)
         n = self._convoy_edit(slots, lambda p, r: set_convoy_item(p, r, iid))
         self.refresh_convoy(select=slots)
-        self.flash(f"Convoy slot {slots[0] + 1}: {old} → {item_label(iid)}"
-                   + (f" in {n} saves" if n > 1 else ""))
+        self.flash(f"仓库槽位 {slots[0] + 1}：{old} → {item_label(iid)}"
+                   + (f"，共 {n} 个存档" if n > 1 else ""))
 
     def set_convoy_qty(self):
         slots = self._conv_selected()
         if not slots:
-            self.flash("Select a convoy row first.", "warn")
+            self.flash("请先选择一个仓库行。", "warn")
             return
         qty = self._qty()
         if qty is None:
             return
         n = self._convoy_edit(slots, lambda p, r: set_convoy_qty(p, r, qty))
         self.refresh_convoy(select=slots)
-        self.flash(f"Quantity → {qty} on {len(slots)} row(s)" + (f" in {n} saves" if n > 1 else ""))
+        self.flash(f"数量 → {qty}（{len(slots)} 行）" + (f"，共 {n} 个存档" if n > 1 else ""))
 
     # ============================================================ gold
     def _show_gold(self, val: int | None, hint: str):
@@ -2355,15 +2363,15 @@ class App(AdvancedMixin, tk.Tk):
             return self._show_gold(None, "")
         cur = current_gold(bytes(self.sv.payload))
         if cur is None:
-            return self._show_gold(None, "This slot has no GameUserData record.")
+            return self._show_gold(None, "此槽位没有 GameUserData 记录。")
         self.money_off = cur[1]
         self.gold_auto = True
-        self._show_gold(cur[0], "Read from this slot's own record.")
+        self._show_gold(cur[0], "从此槽位自身的记录读取。")
 
 
     def find_gold(self):
         """Gone: gold has a fixed address."""
-        self.flash("Gold is read straight from the save — nothing to search for.", "info")
+        self.flash("金钱直接从存档读取——无需搜索。", "info")
 
 
     def on_gold_pick(self, _e=None):
@@ -2376,16 +2384,16 @@ class App(AdvancedMixin, tk.Tk):
         try:
             val = int(self.gold_new.get().replace(",", "").strip())
         except ValueError:
-            self.flash("Type the new gold amount as a number.", "warn")
+            self.flash("请用数字输入新的金额。", "warn")
             return
         if not 0 <= val <= 0xFFFFFFFF:
-            self.flash("Gold must be between 0 and 4,294,967,295.", "warn")
+            self.flash("金额必须在 0 到 4,294,967,295 之间。", "warn")
             return
         self.push_undo()
         touched = [sv for sv in self._targets() if write_gold(sv.payload, val)]
         self._touch(touched)
         self.locate_gold()
-        self.flash(f"Gold → {val:,}" + (f" in {len(touched)} slots" if len(touched) > 1 else ""))
+        self.flash(f"金钱 → {val:,}" + (f"，共 {len(touched)} 个槽位" if len(touched) > 1 else ""))
 
 
     def _set_gold_auto(self):

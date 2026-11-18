@@ -111,12 +111,50 @@ def job_ids() -> dict[int, dict]:
     return _JOB_IDS
 
 
+_CLASS_LOWER = None
+
+
+def _class_lower() -> dict:
+    """case/space-insensitive class name -> Chinese, for ASCII JID_ pipeline ids."""
+    global _CLASS_LOWER
+    if _CLASS_LOWER is None:
+        from zh_names import CLASSES
+        _CLASS_LOWER = {}
+        for k, v in CLASSES.items():
+            _CLASS_LOWER.setdefault(k.lower(), v)
+            _CLASS_LOWER.setdefault(k.lower().replace(" ", ""), v)
+    return _CLASS_LOWER
+
+
 def job_name(value: int) -> str:
     meta = job_ids().get(value)
     if not meta:
         return f"unknown class {value:08x}"
+    zh = chinese_name("classes", value)
+    if zh:
+        return zh
+    jp = meta.get("jp") or ""
     en = meta.get("en") or ""
-    return chinese_name("classes", value) or CLASSES.get(en) or en or meta.get("jp") or f"class {value:08x}"
+    # mounted classes have a "(dismounted)" variant entry that shares the base
+    # name; a few entries carry a mismatched English label, so the Japanese
+    # JID_ key wins over `en`; ASCII ids (JID_Archer, JID_H_Sniper …) duplicate
+    # the named classes and are matched by their stem, case-insensitively
+    off = "（下马）" if en.endswith(" (dismounted)") else ""
+    if off:
+        en = en[:-len(" (dismounted)")]
+    hit = CLASSES.get(jp)
+    if not hit and en:
+        hit = CLASSES.get(en)
+    if not hit and jp.startswith("JID_"):
+        stem = re.sub(r"^JID_(H_)?", "", jp)
+        spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", stem)
+        low = _class_lower()
+        for cand in (stem, spaced, "JID_" + stem,
+                     stem.lower(), spaced.lower(), "jid_" + stem.lower()):
+            hit = CLASSES.get(cand) or low.get(cand)
+            if hit:
+                break
+    return (hit or en or jp or f"class {value:08x}") + off
 
 
 # --------------------------------------------------------------------------
@@ -177,7 +215,8 @@ def item_category(meta: dict) -> str:
             w in en for w in ("amulet", "ring", "bracelet", "charm")):
         return "accessory"
     if base.endswith(WEAPON_TAIL) or en.endswith(
-            ("sword", "lance", "spear", "axe", "bow", "blade", "staff", "tome", "shield")):
+            ("sword", "lance", "spear", "axe", "bow", "blade", "staff", "tome", "shield",
+             "edge")):
         if any(w in jp for w in ("薬", "草")) or "book" in en and jp.endswith("書") and "の書" not in jp:
             return "consumable"
         return "weapon"
@@ -1015,7 +1054,8 @@ ITEM_KINDS = ["Sword", "Lance", "Axe", "Bow", "Tome", "Staff", "Fist", "Shield",
 
 _KIND_WORDS = [
     ("Staff", ("staff", "rod", "wand"), ("杖",)),
-    ("Sword", ("sword", "blade", "katana", "rapier", "sabre", "saber", "zanbato", "gladius"),
+    ("Sword", ("sword", "blade", "katana", "rapier", "sabre", "saber", "zanbato", "gladius",
+               "edge"),
      ("剣", "刀")),
     ("Lance", ("lance", "spear", "javelin", "pike", "halberd", "trident"), ("槍", "鉾", "薙刀")),
     ("Axe", ("axe", "hatchet", "tomahawk", "poleax"), ("斧",)),

@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import struct
+import unicodedata
 
 import fefw_core as core
 from fefw_save import *                      # noqa: F401,F403  (ids, labels, catalogue…)
@@ -167,8 +169,8 @@ def remove_item(payload: bytearray, uid: int, index: int) -> bool:
 # --------------------------------------------------------------------------
 # arts / skills  (the record's sections after the items)
 # --------------------------------------------------------------------------
-SKILL_LIST_NAMES = ("Equipped arts", "Equipped skills", "List 3", "Arts known",
-                    "List 5", "Learned (all)")
+SKILL_LIST_NAMES = ("装备战技", "装备技能", "列表 3", "已掌握战技",
+                    "列表 5", "已学会（全部）")
 
 
 def skill_lists(payload, uid: int) -> list:
@@ -197,23 +199,53 @@ def _skills() -> dict:
     global _SKILLS
     if _SKILLS is None:
         try:
-            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                   "skill_ids.json"), encoding="utf8") as fh:
+            with open(os.path.join(DATA_DIR, "skill_ids.json"), encoding="utf8") as fh:
                 _SKILLS = {int(k, 16): v for k, v in json.load(fh).items()}
         except Exception:                     # noqa: BLE001 — names are optional
             _SKILLS = {}
     return _SKILLS
 
 
+# 派生键后缀：X+ / X[戦技] / X効果 / X_敵 / X(味方) 之类在数据里是独立条目，
+# 翻译表只收基底名，这里剥掉后缀复用基底译名，再把中文后缀拼回去。
+_SKILL_SUFFIXES = (("[戦技]", "（战技）"), ("効果", "效果"), ("_敵", "（敌）"),
+                   ("(味方)", "（友方）"))
+
+
+def _skill_zh(jp: str):
+    from zh_names import SKILLS
+    hit = SKILLS.get(jp)
+    if hit:
+        return hit
+    # per-chapter variants (デスΓ_SC15_09 …) share the base skill's name
+    base = re.sub(r"_(SC|KL|DB|WD|EU)[0-9Xx_]*$", "", jp)
+    tail = ""
+    for _ in range(4):
+        if base.endswith("+") and len(base) > 1:
+            base, tail = base[:-1], "+" + tail
+            continue
+        for suf, zh in _SKILL_SUFFIXES:
+            if base.endswith(suf) and len(base) > len(suf):
+                base, tail = base[:-len(suf)], zh + tail
+                break
+        else:
+            break
+    hit = SKILLS.get(base)
+    return hit + tail if hit else None
+
+
 def skill_label(sid: int) -> str:
-    """English name, else the game's own Japanese name, else the id."""
+    """Prefer game-derived and verified Chinese names, then original labels."""
+    official = chinese_name("skills", sid)
+    if official:
+        return official
     meta = item_ids().get(sid & 0xFFFFFFFF)
     if meta:
         return item_label(sid, meta)
     s = _skills().get(sid & 0xFFFFFFFF)
     if s:
-        from zh_names import SKILLS
-        return chinese_name("skills", sid) or SKILLS.get(s.get("jp")) or s.get("en") or s.get("jp") or s.get("sid")
+        jp = unicodedata.normalize("NFKC", s.get("jp") or "").strip()
+        return _skill_zh(jp) or s.get("en") or s.get("jp") or s.get("sid")
     return "0x%08X" % (sid & 0xFFFFFFFF)
 
 
@@ -364,8 +396,9 @@ def remove_convoy_slot(payload: bytearray, slot: int) -> bool:
 # gold (fixed address: GameUserData + 6, in every slot)
 # --------------------------------------------------------------------------
 # GameUserData starts with the route, part and chapter the slot was saved in
-# (e.g. 03 01 0c = Theodora's route, part 1, chapter 12).
-ROUTE_LORDS = {1: "Cai", 2: "Dietrich", 3: "Theodora", 4: "Leda", 9: "Eshmel"}
+# (e.g. 03 01 0c = Theodora's route, part 1, chapter 12).  Display names follow
+# zh_names.CHARACTERS; unknown codes keep the game's own label.
+ROUTE_LORDS = {1: "凯伊", 2: "迪托利希", 3: "赛奥朵拉", 4: "蕾达", 9: "伊修玛尔"}
 
 
 def route_info(payload) -> "tuple[str, int, int] | None":
