@@ -9,6 +9,7 @@ from pathlib import Path
 import struct
 
 import fefw_core as core
+from zh_names import FACILITIES
 
 HERE = Path(__file__).resolve().parent
 # These progression identities are never edited by this module.
@@ -61,7 +62,12 @@ def catalog():
                 raise ValueError('invalid facility identity')
         return cat
     except (OSError, ValueError, KeyError, TypeError) as exc:
-        raise FacilityError(f'Cannot load facility_names.json: {exc}') from exc
+        raise FacilityError(f'无法加载 facility_names.json：{exc}') from exc
+
+
+def label_zh(row) -> str:
+    """Chinese label; falls back to the catalogue's English label."""
+    return FACILITIES.get(row['label'], row['label'])
 
 
 def apply_labels(names):
@@ -70,12 +76,27 @@ def apply_labels(names):
         key = row['name']
         if names.get(h, {}).get('name', key) != key:
             raise FacilityError(f'Conflicting facility identity for {h:08x}')
-        prefix = ('Movement restricted: ' if h in MOVEMENT else
-                  'Disabled: ' if row['polarity'] == 'restriction' else
-                  'Registered: ' if row['kind'] == 'Gate registration' else
-                  'Function unlocked: ' if row['kind'] in ('Journal', 'Area access') else 'Facility unlocked: ')
-        updates[h] = {**names.get(h, {}), 'name': key, 'label': prefix + row['label'], 'kind': 'facility'}
+        prefix = ('移动受限：' if h in MOVEMENT else
+                  '已禁用：' if row['polarity'] == 'restriction' else
+                  '已登记：' if row['kind'] == 'Gate registration' else
+                  '功能解锁：' if row['kind'] in ('Journal', 'Area access') else '设施解锁：')
+        updates[h] = {**names.get(h, {}), 'name': key, 'label': prefix + label_zh(row), 'kind': 'facility'}
     names.update(updates)
+
+
+KIND_ZH = {'Service': '服务设施', 'Gate registration': '神道之门登记',
+           'Journal': '冒险手册', 'Area access': '区域进入'}
+COVERAGE_ZH = {'Inferred': '推断', 'Unlock tested': '解锁已测试',
+               'Registration tested': '登记已测试', 'Game-tested': '游戏内验证',
+               'Conditional pass': '有条件通过'}
+
+
+def kind_label(row) -> str:
+    return KIND_ZH.get(row['kind'], row['kind'])
+
+
+def coverage_label(row) -> str:
+    return COVERAGE_ZH.get(row['coverage'], row['coverage'])
 
 
 def locate(f):
@@ -83,18 +104,18 @@ def locate(f):
     identities = ANCHORS | (catalog().keys() - {SEWERS} - MOVEMENT.keys())
     candidates = [m for m in core.flag_maps(f) if any(v.hash in identities for v in m.flags)]
     if len(users) != 1 or len(candidates) != 1:
-        raise FacilityError('No unique general facility map; these controls are read-only.')
+        raise FacilityError('通用设施标记表不唯一；这些控件只读。')
     fm = candidates[0]
     hashes = {v.hash for v in fm.flags}
     if len(hashes & ANCHORS) < MIN_ANCHORS or len(hashes) != len(fm.flags):
-        raise FacilityError('Facility map needs two unchanged anchors and no duplicate keys.')
+        raise FacilityError('设施标记表需要两个未改动的锚点，且不能有重复键。')
     tree = f.tree()
     node, user = tree.node_at(fm.start), tree.node_at(users[0].start)
     group = tree.nodes[node].parent if node >= 0 else -1
     if (node < 0 or user < 0 or group < 0 or tree.nodes[node].struct
             or not tree.nodes[group].struct or tree.nodes[group].parent != user
             or any(n.parent == node for n in tree.nodes)):
-        raise FacilityError('Unrecognised facility map structure; editing is disabled.')
+        raise FacilityError('无法识别的设施标记表结构；编辑已禁用。')
     return fm
 
 
@@ -113,7 +134,7 @@ def flag_group(f):
         return tree, tree.nodes[tree.node_at(general.start)].parent, general.start
     users = [b for b in f.blocks if b.name == 'GameUserData']
     if len(users) != 1 or f.payload[users[0].start+4] != 23:
-        raise FacilityError('Unrecognised early flag group; editing is disabled.')
+        raise FacilityError('无法识别的早期标记组；编辑已禁用。')
     user = tree.node_at(users[0].start); hits = []
     for index, node in enumerate(tree.nodes):
         if node.parent != user or not node.struct: continue
@@ -133,7 +154,7 @@ def flag_group(f):
         if len(set(keys)) != len(keys) or set(keys) & ANCHORS: continue
         hits.append((index, general_start))
     if len(hits) != 1:
-        raise FacilityError('No unique supported flag group; editing is disabled.')
+        raise FacilityError('受支持的标记组不唯一；编辑已禁用。')
     return tree, hits[0][0], hits[0][1]
 
 
@@ -147,19 +168,19 @@ def locate_member(f, member):
     if (table+8*count != parent.end or len({k for k, v in rows}) != count
             or len({v for k, v in rows}) != count
             or {v for k, v in rows} != {n.start for n in tree.nodes if n.parent == group}):
-        raise FacilityError('Unrecognised function flag group; no changes made.')
+        raise FacilityError('无法识别的功能标记组；未做任何改动。')
     targets = [v for k, v in rows if k == member]
     if len(targets) != 1:
-        raise FacilityError('No unique requested flag member; no changes made.')
+        raise FacilityError('所请求的标记成员不唯一；未做任何改动。')
     at = targets[0]; index = tree.node_at(at); node = tree.nodes[index]
     if node.struct or node.parent != group or any(n.parent == index for n in tree.nodes):
-        raise FacilityError('Unexpected flag member structure; no changes made.')
+        raise FacilityError('标记成员结构异常；未做任何改动。')
     maps = [m for m in core.flag_maps(f) if m.start == at]
     if not maps and bytes(f.payload[at+4:node.end]) == bytes(4):
         return core.FlagMap(-1, at, [])  # Empty kind-0 list plus alignment.
     if (len(maps) != 1 or len({v.hash for v in maps[0].flags}) != len(maps[0].flags)
             or f.ptr(at) != node.end):
-        raise FacilityError('Invalid flag member records; no changes made.')
+        raise FacilityError('标记成员记录无效；未做任何改动。')
     return maps[0]
 
 
@@ -202,11 +223,11 @@ def enabled(h, value):
 
 def state_label(h, value):
     if value == UNAVAILABLE:
-        return 'Unavailable; read-only'
+        return '不可用；只读'
     state = enabled(h, value)
     if state is None:
-        return f'Unknown ({value}); preserved'
-    return 'Enabled' if state else 'Disabled'
+        return f'未知（{value}）；保留'
+    return '已启用' if state else '已禁用'
 
 
 def edited(f, edits):
@@ -214,7 +235,7 @@ def edited(f, edits):
     cat = catalog()
     for h, state in edits.items():
         if type(h) is not int or h not in cat or type(state) is not bool:
-            raise FacilityError('Choose known facility switches and an enable/disable action.')
+            raise FacilityError('请选择已知的设施开关并指定启用或禁用。')
     needed = {member_for(h) for h in edits} if edits else {GENERAL_MEMBER}
     maps = {member: locate(f) if member == GENERAL_MEMBER else locate_member(f, member)
             for member in needed}
@@ -222,11 +243,11 @@ def edited(f, edits):
     for h, state in edits.items():
         fm = maps[member_for(h)]
         if h in MOVEMENT and any(v.hash == h and v.wide for v in fm.flags):
-            raise FacilityError(f'{cat[h]["label"]} has an unknown wide encoding; batch unchanged.')
+            raise FacilityError(f'{label_zh(cat[h])} 使用未知的宽编码；整批未改动。')
         present = {v.hash: v.value for v in fm.flags}
         old = enabled(h, present.get(h))
         if old is None:
-            raise FacilityError(f'{cat[h]["label"]} has an unknown saved value; batch unchanged.')
+            raise FacilityError(f'{label_zh(cat[h])} 的保存值未知；整批未改动。')
         if old != state:
             active = not state if cat[h]['polarity'] == 'restriction' else state
             plans.setdefault(fm.start, (fm, {}))[1][h] = 1 if active else None
@@ -253,6 +274,6 @@ def _edit_map(f, fm, effective):
         if h not in present and value is not None:
             records.append(struct.pack('<IB', h, 1))
     if len(records) > 65535:
-        raise FacilityError('The selected flag map is full.')
+        raise FacilityError('所选标记表已满。')
     body = bytes([f.payload[fm.start + 4]]) + struct.pack('<H', len(records)) + b''.join(records)
     return core.replace_content(f, fm.start, body)

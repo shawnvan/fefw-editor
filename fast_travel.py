@@ -11,6 +11,7 @@ from pathlib import Path
 import struct
 
 import fefw_core as core
+from zh_names import FAST_TRAVEL
 
 HERE = Path(__file__).resolve().parent
 AVAILABLE = 1
@@ -39,18 +40,23 @@ def catalog() -> dict[int, dict]:
             raise ValueError("too few catalogue entries")
         return entries
     except (OSError, ValueError, KeyError, TypeError) as exc:
-        raise FastTravelError(f"Cannot load fast_travel_names.json: {exc}") from exc
+        raise FastTravelError(f"无法加载 fast_travel_names.json：{exc}") from exc
+
+
+def title(row) -> str:
+    """Chinese label; falls back to the screenshot-confirmed English name."""
+    return FAST_TRAVEL.get(row["label"], row["label"])
 
 
 def apply_labels(names: dict[int, dict]) -> None:
-    """Use screenshot-confirmed English names; keep exact keys in Reads as."""
+    """Use the Chinese names; keep exact keys in Reads as."""
     entries = catalog()
     for h, row in entries.items():
         if names.get(h, {}).get("name", row["name"]) != row["name"]:
             raise FastTravelError(f"Conflicting flag name for {h:08x}")
     for h, row in entries.items():
         names[h] = {**names.get(h, {}), "name": row["name"],
-                    "label": f"Fast travel: {row['label']}",
+                    "label": f"快速传送：{title(row)}",
                     "kind": "fast_travel"}
 
 
@@ -63,17 +69,17 @@ def locate(f: core.SaveFile) -> core.FlagMap:
     """Require one structurally valid map with at least three known identities."""
     blocks = [b for b in f.blocks if b.name == "GameUserData"]
     if len(blocks) != 1:
-        raise FastTravelError("No unique GameUserData block; editing is disabled.")
+        raise FastTravelError("GameUserData 数据块不唯一；编辑已禁用。")
     hashes = catalog().keys()
     candidates = [m for m in core.flag_maps(f)
                   if any(fl.hash in hashes for fl in m.flags)]
     if len(candidates) != 1:
-        raise FastTravelError("No unique fast-travel list found; this save is read-only here.")
+        raise FastTravelError("找不到唯一的快速传送列表；此页对此存档只读。")
     fm = candidates[0]
     if len({fl.hash for fl in fm.flags} & identifying_hashes()) < MIN_ANCHORS:
-        raise FastTravelError("At least three original destinations must be present to identify this list.")
+        raise FastTravelError("列表中必须至少保留三个原始传送点才能被识别。")
     if len({fl.hash for fl in fm.flags}) != len(fm.flags):
-        raise FastTravelError("Duplicate fast-travel-list keys; editing is disabled.")
+        raise FastTravelError("快速传送列表键重复；编辑已禁用。")
     tree = f.tree()
     node = tree.node_at(fm.start)
     user = tree.node_at(blocks[0].start)
@@ -81,7 +87,7 @@ def locate(f: core.SaveFile) -> core.FlagMap:
     if (node < 0 or user < 0 or group < 0 or tree.nodes[node].struct or
             not tree.nodes[group].struct or tree.nodes[group].parent != user or
             any(n.parent == node for n in tree.nodes)):
-        raise FastTravelError("Unrecognised fast-travel-list structure; editing is disabled.")
+        raise FastTravelError("无法识别的快速传送列表结构；编辑已禁用。")
     return fm
 
 
@@ -91,10 +97,18 @@ def read(f: core.SaveFile) -> dict[int, int]:
 
 def state_label(value: int | None) -> str:
     if value is None:
-        return "Absent"
+        return "未记录"
     if value == AVAILABLE:
-        return "Available (1)"
-    return f"Unknown ({value}); preserved"
+        return "可用 (1)"
+    return f"未知（{value}）；保留"
+
+
+COVERAGE_ZH = {"Confirmed list": "列表已确认", "Travel tested": "传送已测试",
+               "Effect unknown": "效果未知"}
+
+
+def coverage_label(row) -> str:
+    return COVERAGE_ZH.get(row["coverage"], row["coverage"])
 
 
 def edited(f: core.SaveFile, edits: dict[int, int | None]) -> bytearray:
@@ -103,18 +117,18 @@ def edited(f: core.SaveFile, edits: dict[int, int | None]) -> bytearray:
     for h, value in edits.items():
         if h not in cat or (value is not None and
                             (type(value) is not int or value != AVAILABLE)):
-            raise FastTravelError("Only known destinations and availability/removal are supported.")
+            raise FastTravelError("仅支持已知的传送点，以及设为可用或移除。")
     fm = locate(f)
     present = {fl.hash: fl.value for fl in fm.flags}
     for h in edits:
         if h in present and present[h] != AVAILABLE:
-            raise FastTravelError(f"{cat[h]['label']} has unknown state {present[h]}; unchanged.")
+            raise FastTravelError(f"{title(cat[h])} 的状态未知（{present[h]}）；未改动。")
     effective = {h: v for h, v in edits.items() if present.get(h) != v}
     if not effective:
         return bytearray(f.payload)
     remaining = (present.keys() - effective.keys()) | {h for h, v in effective.items() if v is not None}
     if len(remaining & identifying_hashes()) < MIN_ANCHORS:
-        raise FastTravelError("Keep at least three original destinations so the list remains identifiable.")
+        raise FastTravelError("请至少保留三个原始传送点，列表才能继续被识别。")
     records = []
     for fl in fm.flags:
         if fl.hash in effective and effective[fl.hash] is None:
@@ -125,6 +139,6 @@ def edited(f: core.SaveFile, edits: dict[int, int | None]) -> bytearray:
         if h not in present and v is not None:
             records.append(struct.pack("<IB", h, v))
     if len(records) > 65535:
-        raise FastTravelError("The fast-travel list is full.")
+        raise FastTravelError("快速传送列表已满。")
     body = bytes([f.payload[fm.start + 4]]) + struct.pack("<H", len(records)) + b"".join(records)
     return core.replace_content(f, fm.start, body)

@@ -1263,3 +1263,54 @@ ITEMS.update({
     "ウォームZ": "沃姆Z", "赤羽の友宝": "赤羽纪念品", "黒翼の友宝": "黑翼纪念品",
     "黒翼のお守り": "黑翼护身符",
 })
+
+# ---- 页面标签（Fast travel / Functions）------------------------------------
+# 键为 fast_travel_names.json / facility_names.json 中的英文 label；官方简体
+# 词汇（武器店、训练所、告示板、神道之门、幽·法丝、鞑古席翁、贫民窟……）
+# 来自游戏 Msg/CNzh 文本，其余为编辑器措辞的手译。
+FAST_TRAVEL = {
+    "Arena Plaza": "大斗技场前广场", "Shopping Arcade": "商店街",
+    "City Streets": "商业街区", "Upper Temple Row": "上参道",
+    "Lower Temple Row": "下参道", "Entertainment District": "富裕街区",
+    "Jurah's Temple": "茱拉神殿", "Mars's Temple": "马兹神殿",
+    "Smyrnos's Temple": "史米尔诺斯神殿", "Credna's Temple": "柯雷尔神殿",
+    "Kalla's Temple": "卡拉神殿", "Aurora's Temple": "欧若拉神殿",
+    "Stables": "厩舍前", "Port": "港口", "Lowtown": "贫民窟",
+    "Tavern": "酒馆", "Aurora's private room": "欧若拉的房间",
+    "Aurora's garden": "欧若拉的庭园",
+    "Salamis Guesthouse": "萨拉弥斯迎宾馆", "Yu Phas Temple": "幽·法丝神殿",
+}
+
+FACILITIES = {
+    "Armorer": "武器店", "Item shop": "道具店", "Marketplace": "市场",
+    "Inn": "旅舍", "Pale Raven perch": "苍鸦栖木", "Bulletin boards": "告示板",
+    "Temple service": "神殿奉仕活动", "Training": "训练所",
+    "Certification exams": "资格考试", "Feasts": "飨宴", "Blacksmith": "打铁铺",
+    "Vandahl Trading Company": "旺达尔商会", "Theatre": "剧场",
+    "Theatre performances": "剧场出演", "Thermae (baths)": "公共浴场",
+    "Tavern gift vendor": "酒馆礼物店",
+    "Local performances (Leda)": "据点演出（蕾达）",
+    "Tavern performances (Leda)": "酒馆演出（蕾达）",
+    "Drink vendor (Leda)": "调饮师（蕾达）", "Stables": "厩舍",
+    "Gate of the Gods: Kalla": "神道之门：卡拉神殿",
+    "Gate of the Gods: Mars": "神道之门：马兹神殿",
+    "Gate of the Gods: Jurah": "神道之门：茱拉神殿",
+    "Gate of the Gods: Smyrnos": "神道之门：史米尔诺斯神殿",
+    "Gate of the Gods: Credna": "神道之门：柯雷尔神殿",
+    "Gate of the Gods: Aurora": "神道之门：欧若拉神殿",
+    "Gate of the Gods: Yu Phas": "神道之门：幽·法丝神殿",
+    "Adventure Journal — access": "冒险手册——总开关",
+    "Adventure Journal — quest list": "冒险手册——任务一览",
+    "Adventure Journal — calendar": "冒险手册——日历",
+    "Adventure Journal — adventure guide": "冒险手册——冒险指南",
+    "Adventure Journal — renown records": "冒险手册——名声记录",
+    "Adventure Journal — battle advice": "冒险手册——战斗建议",
+    "Dagsion upper-area access": "鞑古席翁上层区域",
+    "Dagsion lower-area access": "鞑古席翁下层区域",
+    "Mentoring (Cai)": "稽古训练（凯伊）",
+    "Sewers access (Cai)": "下水道进入（凯伊）",
+    "Dagsion upper-area movement": "鞑古席翁上层移动",
+    "Dagsion middle-area movement": "鞑古席翁中层移动",
+    "Dagsion lower-area / port movement": "鞑古席翁下层/港口移动",
+    "Wealthy–commercial district passage": "富裕区—商业区通道",
+}
