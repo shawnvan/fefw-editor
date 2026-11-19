@@ -37,9 +37,10 @@ import supports  # noqa: E402  (support pair chart + conversation flags)
 from zh_names import CHARACTERS  # noqa: E402
 import fefw_core as core  # noqa: E402  (save object tree: resizing edits)
 from editor_advanced import AdvancedMixin  # noqa: E402  (Player / Classes / Flags pages)
+from ui_util import ScrollableFrame, enable_multi_select, last_tree  # noqa: E402  (Ctrl+A / Shift+drag in tables)
 
 APP_NAME = "Fortune's Weave Save Editor"
-__version__ = "1.2.4"
+__version__ = "1.4.0"
 SETTINGS_PATH = os.path.join(USER_DIR, "editor_settings.json")
 ICON_DIR = os.path.join(USER_DIR, "icons")
 
@@ -138,6 +139,10 @@ class SearchEntry(ttk.Entry):
         self._delay = delay
         self._job = None
         self._showing_ph = False
+        # Showing or hiding the placeholder writes the StringVar but never
+        # changes the query, so it must not fire on_change (#18: on the
+        # Supports page that refresh reselected the first character).
+        self._muted = False
         self._show_ph()
         self.bind("<FocusIn>", self._focus_in)
         self.bind("<FocusOut>", lambda e: self._show_ph())
@@ -147,16 +152,25 @@ class SearchEntry(ttk.Entry):
     def _show_ph(self):
         if not self._var.get():
             self._showing_ph = True
-            self._var.set(self._ph)
+            self._set_quietly(self._ph)
             self.configure(style="Placeholder.TEntry")
 
     def _focus_in(self, _e=None):
         if self._showing_ph:
             self._showing_ph = False
-            self._var.set("")
+            self._set_quietly("")
             self.configure(style="TEntry")
 
+    def _set_quietly(self, text: str):
+        self._muted = True
+        try:
+            self._var.set(text)
+        finally:
+            self._muted = False
+
     def _changed(self, *_a):
+        if self._muted:
+            return
         if self._job:
             self.after_cancel(self._job)
         self._job = self.after(self._delay, self._fire)
@@ -245,6 +259,7 @@ def scrolled_tree(master, **kw) -> ttk.Treeview:
     tree.pack(side="left", fill="both", expand=True)
     sb.pack(side="right", fill="y")
     tree.container = frame
+    enable_multi_select(tree)
     return tree
 
 
@@ -412,7 +427,7 @@ class App(AdvancedMixin, tk.Tk):
         self.title(APP_NAME)
         self.ui_scale = _install_scaling(self)
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
-        w, h = min(self.px(1240), sw - 40), min(self.px(780), sh - 80)
+        w, h = min(self.px(1360), sw - 40), min(self.px(900), sh - 80)
         self.geometry(f"{w}x{h}+{max(0, (sw - w) // 2)}+{max(0, (sh - h) // 3)}")
         self.minsize(min(self.px(1000), w), min(self.px(640), h))
 
@@ -654,10 +669,12 @@ class App(AdvancedMixin, tk.Tk):
         s.layout("Treeview", [("Treeview.treearea", {"sticky": "nswe"})])
         s.configure("Side.Treeview", background=p["side"], fieldbackground=p["side"])
 
-        s.configure("Vertical.TScrollbar", background=p["raised"], troughcolor=p["card"],
-                    bordercolor=p["card"], lightcolor=p["raised"], darkcolor=p["raised"],
-                    arrowcolor=p["faint"], gripcount=0, arrowsize=12)
-        s.map("Vertical.TScrollbar", background=[("active", p["border"])])
+        for orientation in ("Vertical", "Horizontal"):
+            style = f"{orientation}.TScrollbar"
+            s.configure(style, background=p["raised"], troughcolor=p["card"],
+                        bordercolor=p["card"], lightcolor=p["raised"], darkcolor=p["raised"],
+                        arrowcolor=p["faint"], gripcount=0, arrowsize=12)
+            s.map(style, background=[("active", p["border"])])
 
         # tabs
         s.configure("TNotebook", background=p["bg"], borderwidth=0, tabmargins=(0, 4, 0, 0))
@@ -669,7 +686,7 @@ class App(AdvancedMixin, tk.Tk):
               lightcolor=[("selected", p["accent"])],
               expand=[("selected", (0, 0, 0, 0))])
         s.configure("Main.TNotebook", background=p["side"], tabmargins=(12, 0, 0, 0))
-        s.configure("Main.TNotebook.Tab", background=p["side"], padding=self.pad(20, 10),
+        s.configure("Main.TNotebook.Tab", background=p["side"], padding=self.pad(9, 10),
                     lightcolor=p["side"], bordercolor=p["side"])
         s.map("Main.TNotebook.Tab", background=[("selected", p["bg"]), ("active", p["raised"])],
               lightcolor=[("selected", p["accent"])])
@@ -740,7 +757,8 @@ class App(AdvancedMixin, tk.Tk):
         self.inv_tree.tag_configure("header", foreground=p["muted"], font=self.f_small)
         for tree in (getattr(self, "cls_tree", None), getattr(self, "mas_tree", None),
                      getattr(self, "flag_tree", None), getattr(self, "mount_tree", None),
-                     getattr(self, "pool_tree", None)):
+                     getattr(self, "pool_tree", None),
+                     getattr(self, "map_tree", None)):
             if tree is not None:
                 tree.tag_configure("flag_unknown", foreground=p["muted"])
                 tree.tag_configure("empty", foreground=p["faint"])
@@ -827,21 +845,20 @@ class App(AdvancedMixin, tk.Tk):
 
     # ----------------------------------------------------------------- ui
     def _build(self):
-        p = self.p
         # ---- header: two rows, so the slot picker never has to share a row
         # with the action buttons (on small windows pack squeezed the
         # "Open folder…" button out of the window entirely)
         head = ttk.Frame(self, style="Header.TFrame")
         head.pack(fill="x")
-        top = ttk.Frame(head, style="Header.TFrame", padding=(18, 12, 18, 4))
-        top.pack(fill="x")
-        brand = ttk.Frame(top, style="Header.TFrame")
+        actions = ttk.Frame(head, style="Header.TFrame")
+        actions.pack(fill="x")
+        brand = ttk.Frame(actions, style="Header.TFrame")
         brand.pack(side="left")
         ttk.Label(brand, text="Fortune's Weave", style="Title.TLabel").pack(anchor="w")
         ttk.Label(brand, text=f"SAVE EDITOR  ·  v{__version__}",
                   style="Subtitle.TLabel").pack(anchor="w")
 
-        right = ttk.Frame(top, style="Header.TFrame")
+        right = ttk.Frame(actions, style="Header.TFrame")
         right.pack(side="right")
         self.theme_btn = ttk.Button(right, text="☀" if self.theme_name() == "dark" else "☾",
                                     width=3, style="Icon.TButton", command=self.toggle_theme)
@@ -853,22 +870,23 @@ class App(AdvancedMixin, tk.Tk):
         self.revert_btn.pack(side="right")
         ttk.Button(right, text='创建快照', command=self.take_snapshot).pack(side="right", padx=(0, 8))
         ttk.Button(right, text='恢复快照…', command=self.restore_snapshot).pack(side="right")
+        self.open_btn = ttk.Button(right, text='打开…', command=self.open_dialog)
+        self.open_btn.pack(side="right", padx=(0, 8))
 
-        mid = ttk.Frame(head, style="Header.TFrame", padding=(18, 6, 18, 10))
-        mid.pack(fill="x")
+        mid = ttk.Frame(head, style="Header.TFrame")
+        mid.pack(fill="x", pady=(10, 0))
         r1 = ttk.Frame(mid, style="Header.TFrame")
         r1.pack(fill="x")
         ttk.Label(r1, text='存档槽位', style="Side.TLabel").pack(side="left")
         self.slot_var = tk.StringVar()
         # width is a character count and its pixel size varies by Tk version and
-        # platform; a fixed 52 columns overflows the header on Tk 9 / macOS and
-        # pushes the button after the box out of the window, so keep the base
-        # short and let the box stretch to whatever space the row has left
+        # platform; a fixed 52 columns overflows the header on Tk 9 / macOS, so
+        # keep the base short and let the box stretch to whatever space the row
+        # has left
         self.slot_box = ttk.Combobox(r1, textvariable=self.slot_var, state="readonly", width=28)
-        self.slot_box.pack(side="left", padx=(8, 8), fill="x", expand=True)
+        self.slot_box.pack(side="left", padx=(8, 0), fill="x", expand=True)
         self.slot_box.bind("<<ComboboxSelected>>", self.on_slot_pick)
         self.register_combo(self.slot_box)
-        ttk.Button(r1, text='打开文件夹…', command=self.open_dialog).pack(side="left")
         r2 = ttk.Frame(mid, style="Header.TFrame")
         r2.pack(fill="x", pady=(6, 0))
         self.mirror_chk = ttk.Checkbutton(r2, text='同时编辑此路线的其他存档',
@@ -882,7 +900,6 @@ class App(AdvancedMixin, tk.Tk):
         bar = ttk.Frame(self, style="Header.TFrame", padding=(18, 6))
         bar.pack(side="bottom", fill="x")
         self.status_lbl = ttk.Label(bar, text='就绪', style="Status.TLabel")
-        self.status_lbl.pack(side="left")
         self.dirty_lbl = ttk.Label(bar, text="", style="Status.TLabel")
         self.dirty_lbl.pack(side="right")
 
@@ -897,14 +914,37 @@ class App(AdvancedMixin, tk.Tk):
         self.classes_page = ttk.Frame(self.pages, padding=(14, 14, 14, 8))
         self.flags_page = ttk.Frame(self.pages, padding=(14, 14, 14, 8))
         self.mounts_page = ttk.Frame(self.pages, padding=(14, 14, 14, 8))
+        self.world_page = ttk.Frame(self.pages, padding=(14, 14, 14, 8))
+        self.tutorials_page = ttk.Frame(self.pages, padding=(14, 14, 14, 8))
+        self.blessings_page = ttk.Frame(self.pages, padding=(14, 14, 14, 8))
+        self.fast_travel_page = ttk.Frame(self.pages, padding=(14, 14, 14, 8))
+        self.facilities_page = ttk.Frame(self.pages, padding=(14, 14, 14, 8))
+        self.deeds_page = ttk.Frame(self.pages, padding=(14, 14, 14, 8))
+        self.boons_page = ttk.Frame(self.pages, padding=(14, 14, 14, 8))
         self.pages.add(self.units_page, text='角色')
         self.pages.add(self.convoy_page, text='仓库')
         self.pages.add(self.gold_page, text='金钱')
         self.pages.add(self.supports_page, text='支援')
         self.pages.add(self.player_page, text='玩家')
         self.pages.add(self.classes_page, text='职业')
-        self.pages.add(self.flags_page, text='标记')
         self.pages.add(self.mounts_page, text='坐骑')
+        self.pages.add(self.world_page, text="World map")
+        self.pages.add(self.tutorials_page, text="Tutorials")
+        self.pages.add(self.blessings_page, text="Blessings")
+        self.pages.add(self.fast_travel_page, text="Fast travel")
+        self.pages.add(self.facilities_page, text="Functions")
+        self.pages.add(self.deeds_page, text="Notable Deeds")
+        self.pages.add(self.boons_page, text="Boons")
+        self.pages.add(self.flags_page, text='标记')
+
+        tab_menu = tk.Menu(self, tearoff=False)
+        for page in self.pages.tabs():
+            tab_menu.add_command(label=self.pages.tab(page, 'text'),
+                                 command=lambda page=page: self.pages.select(page))
+        self.tab_menu_button = ttk.Menubutton(bar, text='Go to tab', menu=tab_menu)
+        self.tab_menu_button.pack(side='right', padx=(10, 16))
+        self.status_lbl.pack(side='left', fill='x', expand=True)
+        self.pages.enable_traversal()
 
         self._build_units()
         self._build_convoy()
@@ -914,8 +954,37 @@ class App(AdvancedMixin, tk.Tk):
         self._build_classes()
         self._build_flags()
         self._build_mounts()
+        self._build_world_map()
+        self._build_tutorials()
+        self._build_blessings()
+        self._build_fast_travel()
+        self._build_facilities()
+        self._build_deeds()
+        self._build_boons()
         self._style_trees()
+        self._enable_multi_select_all()
         self._update_dirty()
+
+    def _enable_multi_select_all(self):
+        """Ctrl+A / Shift+drag on every list except the three row-pickers.
+
+        Unit and blessing lists drive edit forms, so stay single-choice; every
+        other table (convoy, classes, masteries, flags, mounts) takes a range.
+        """
+        skip = {id(getattr(self, "unit_tree", None)),
+                id(getattr(self, "cls_unit_tree", None)),
+                id(getattr(self, "blessing_tree", None)),
+                id(getattr(self, "deed_tree", None)),
+                id(getattr(self, "boon_tree", None)),
+                id(getattr(self, "facility_access_tree", None))}
+
+        def walk(w):
+            for child in w.winfo_children():
+                if isinstance(child, ttk.Treeview) and id(child) not in skip:
+                    enable_multi_select(child)
+                walk(child)
+
+        walk(self)
 
     # -------------------------------------------------------- units page
     def _build_units(self):
@@ -925,28 +994,36 @@ class App(AdvancedMixin, tk.Tk):
         side = ttk.Frame(pane, style="Card.TFrame", padding=12)
         pane.add(side, weight=0)
         top = ttk.Frame(side, style="Card.TFrame")
-        top.pack(fill="x")
+        side.columnconfigure(0, weight=1)
+        side.rowconfigure(3, weight=1)
+        top.grid(row=0, column=0, sticky="ew")
         ttk.Label(top, text='角色', style="CardH3.TLabel").pack(side="left")
         self.unit_count = ttk.Label(top, text="", style="CardMuted.TLabel")
         self.unit_count.pack(side="right")
         self.unit_search = SearchEntry(side, "搜索角色或职业…  (Ctrl+F)",
                                        self.refresh_units, width=30)
-        self.unit_search.pack(fill="x", pady=(8, 6))
+        self.unit_search.grid(row=1, column=0, sticky="ew", pady=(8, 6))
         self.unit_search.bind("<Down>", lambda e: (self.unit_tree.focus_set(), "break")[1])
         ttk.Checkbutton(side, text='显示敌人和 NPC', style="Card.TCheckbutton",
                         variable=self.show_enemies,
                         command=lambda: (self.refresh_units(), self._save_settings())
-                        ).pack(anchor="w", pady=(0, 6))
-        self.unit_tree = scrolled_tree(side, columns=("lv",), show="tree headings",
+                        ).grid(row=2, column=0, sticky="w", pady=(0, 6))
+        self.unit_tree = scrolled_tree(side, columns=("number", "lv"), show="tree headings",
                                        selectmode="browse")
         self.unit_tree.heading("#0", text='名称', anchor="w")
         self.unit_tree.heading("lv", text='等级', anchor="e")
+        self.unit_tree.heading("number", text='编号', anchor="e")
+        self.unit_tree.column("number", width=62, minwidth=55, anchor="e", stretch=False)
         self.unit_tree.column("#0", width=200, minwidth=140)
         self.unit_tree.column("lv", width=44, minwidth=40, anchor="e", stretch=False)
-        self.unit_tree.container.pack(fill="both", expand=True)
+        self.unit_tree.container.grid(row=3, column=0, sticky="nsew")
         self.unit_tree.bind("<<TreeviewSelect>>", self.on_unit_select)
         acts = ttk.Frame(side, style="Card.TFrame")
-        acts.pack(fill="x", pady=(8, 0))
+        acts.grid(row=4, column=0, sticky="ew", pady=(8, 0))
+        ttk.Button(acts, text='添加角色…', style="Small.TButton",
+                   command=self.open_add_unit).pack(fill="x", pady=(0, 6))
+        ttk.Button(acts, text='修改角色编号…', style="Small.TButton",
+                   command=self.open_unit_number).pack(fill="x", pady=(0, 6))
         ttk.Button(acts, text='导入角色…', style="Small.TButton",
                    command=self.copy_unit_in).pack(fill="x")
         ttk.Button(acts, text='移除角色', style="Small.TButton",
@@ -985,8 +1062,9 @@ class App(AdvancedMixin, tk.Tk):
         return (self.register(lambda P: P == "" or (P.isdigit() and len(P) <= 7)), "%P")
 
     def _build_stats_tab(self):
-        tab = ttk.Frame(self.unit_tabs, style="Card.TFrame", padding=18)
-        self.unit_tabs.add(tab, text='属性')
+        self.stats_scroll = ScrollableFrame(self.unit_tabs, style="Card.TFrame", padding=18)
+        self.unit_tabs.add(self.stats_scroll, text='属性')
+        tab = self.stats_scroll.body
         self._stat_spins: list[ttk.Spinbox] = []
         vcmd = self._num_vcmd()
 
@@ -1138,8 +1216,10 @@ class App(AdvancedMixin, tk.Tk):
         ctl = ttk.Frame(left, style="Card.TFrame")
         ctl.pack(side="bottom", fill="x", pady=(10, 0))
         ttk.Label(left, style="CardFaint.TLabel", wraplength=420, justify="left",
-                  text="“添加道具…”把新的一叠道具放进第一个空槽位，“移除”则清空一个槽位，"
-                       "与游戏的存取方式一致：槽位总数保持不变，其后的内容都会安全移动。"
+                  text="每种可堆叠道具都有自己独立的仓库槽位。“添加道具…”放入一整叠；不可堆叠"
+                       "的装备（武器、魔法书、盾牌、多次使用的药剂）每件占一个槽位，放不下时"
+                       "“添加”会拒绝。“移除”清空一个槽位；列表保持槽位总数不变，其后"
+                       "的内容都会安全移动。“所有材料…”会以数量 1 备齐每种矿石、肉、鱼和植物。"
                   ).pack(side="bottom", anchor="w", pady=(8, 0))
         self.conv_tree = scrolled_tree(left, columns=("kind", "qty"), show="tree headings",
                                        selectmode="extended", height=6)
@@ -1163,6 +1243,8 @@ class App(AdvancedMixin, tk.Tk):
                    command=self.add_convoy_item_ui).pack(side="left", padx=(10, 0))
         ttk.Button(ctl, text='移除', style="Small.TButton",
                    command=self.remove_convoy_item_ui).pack(side="left", padx=(6, 0))
+        ttk.Button(ctl, text='所有材料…', style="Small.TButton",
+                   command=self.fill_materials_ui).pack(side="left", padx=(6, 0))
 
         right = ttk.Frame(pane, padding=(10, 0, 0, 0))
         pane.add(right, weight=1)
@@ -1220,7 +1302,7 @@ class App(AdvancedMixin, tk.Tk):
         ttk.Label(top, text='支援对话', style="CardH3.TLabel").pack(side="left")
         self.sup_count = ttk.Label(top, text="", style="CardMuted.TLabel")
         self.sup_count.pack(side="right")
-        ttk.Label(side, text='游戏数据中定义了 C/B/A 对话的角色组合。',
+        ttk.Label(side, text='每位角色的支援组合，以及此存档为每对角色保存的点数。',
                   style="CardMuted.TLabel", wraplength=210, justify="left"
                   ).pack(anchor="w", pady=(2, 8))
         self.sup_search = SearchEntry(side, "搜索角色…", self.refresh_support_chars,
@@ -1229,12 +1311,14 @@ class App(AdvancedMixin, tk.Tk):
         ttk.Checkbutton(side, text='仅显示此存档中的角色',
                         style="Card.TCheckbutton", variable=self.sup_party_only,
                         command=self.refresh_support_chars).pack(anchor="w", pady=(0, 6))
-        self.sup_char_tree = scrolled_tree(side, columns=("n",), show="tree headings",
+        self.sup_char_tree = scrolled_tree(side, columns=("n", "top"), show="tree headings",
                                            selectmode="browse")
         self.sup_char_tree.heading("#0", text='角色', anchor="w")
         self.sup_char_tree.heading("n", text='支援组合', anchor="e")
-        self.sup_char_tree.column("#0", width=170, minwidth=120)
-        self.sup_char_tree.column("n", width=52, anchor="e", stretch=False)
+        self.sup_char_tree.heading("top", text='最高', anchor="e")
+        self.sup_char_tree.column("#0", width=140, minwidth=100)
+        self.sup_char_tree.column("n", width=48, anchor="e", stretch=False)
+        self.sup_char_tree.column("top", width=52, anchor="e", stretch=False)
         self.sup_char_tree.container.pack(fill="both", expand=True)
         self.sup_char_tree.bind("<<TreeviewSelect>>", self.on_support_char)
 
@@ -1253,24 +1337,22 @@ class App(AdvancedMixin, tk.Tk):
                                  style="CardMuted.TLabel")
         self.sup_sub.pack(anchor="w", pady=(2, 0))
 
+        # the note is packed before the table so a short window shrinks the
+        # table instead of pushing the buttons and the note out of sight
+        ttk.Label(main, style="CardFaint.TLabel", justify="left", wraplength=620,
+                  text="点数是游戏转化为支援等级的数值：等级 1-5 分别从 0 / 400 / 1,400 / "
+                       "2,400 / 3,200 点开始（3,200 为上限，已在游戏内确认；其余数值来自 "
+                       "annasnotebook.net 的社区表格）。存档为每对角色都保留了槽位，因此支援"
+                       "尚未开启的组合在这里也有数值——游戏可能要等到关系开启后才会显示。"
+                       "“已观看对话”是存档中对应对话的 支援会話 标记；“最高”是游戏数据"
+                       "给予该组合的最高等级。"
+                  ).pack(side="bottom", fill="x", anchor="w", padx=(12, 0), pady=(10, 0))
+
         body = ttk.Frame(main, style="Card.TFrame", padding=(12, 10))
         body.pack(fill="both", expand=True, padx=(10, 0), pady=(10, 0))
-        self.sup_tree = scrolled_tree(body, columns=("jp", "max", "seen", "party"),
-                                      show="tree headings", selectmode="browse")
-        self.sup_tree.heading("#0", text='支援对象', anchor="w")
-        self.sup_tree.heading("jp", text='日文', anchor="w")
-        self.sup_tree.heading("max", text='最高等级', anchor="center")
-        self.sup_tree.heading("seen", text='已观看对话', anchor="w")
-        self.sup_tree.heading("party", text='在队伍中', anchor="center")
-        self.sup_tree.column("#0", width=190, minwidth=140)
-        self.sup_tree.column("jp", width=150)
-        self.sup_tree.column("max", width=54, anchor="center", stretch=False)
-        self.sup_tree.column("seen", width=170, stretch=False)
-        self.sup_tree.column("party", width=80, anchor="center", stretch=False)
-        self.sup_tree.container.pack(fill="both", expand=True)
 
         acts = ttk.Frame(body, style="Card.TFrame")
-        acts.pack(fill="x", pady=(8, 0))
+        acts.pack(side="bottom", fill="x", pady=(8, 0))
         ttk.Label(acts, text='标记对话为已观看：', style="Card.TLabel").pack(side="left")
         for r in ("C", "B", "A"):
             ttk.Button(acts, text=r, width=3, style="Small.TButton",
@@ -1280,14 +1362,45 @@ class App(AdvancedMixin, tk.Tk):
         self.sup_write_lbl = ttk.Label(acts, text="", style="CardFaint.TLabel")
         self.sup_write_lbl.pack(side="left", padx=(12, 0))
 
-        ttk.Label(main, style="CardFaint.TLabel", justify="left", wraplength=780,
-                  text="配对列表与每对的最高等级来自游戏数据（GameData/Reliance.bin 和 "
-                       "支援会話 标记名）；“已观看对话”列里出现的等级表示此存档记录了对应的"
-                       "对话标记。把对话标记为已观看，写入的就是那个标记——与游戏观看对话时的"
-                       "做法相同——因此游戏内的支援应显示为可用（支援等级本身不是此存档直接"
-                       "暴露的数值）。游戏内支援画面还会列出支援完全没有对话的对象；这些配对"
-                       "在数据中没有名字，因此无法在此显示。"
-                  ).pack(anchor="w", padx=(12, 0), pady=(10, 0))
+        pts = ttk.Frame(body, style="Card.TFrame")
+        pts.pack(side="bottom", fill="x", pady=(8, 0))
+        ttk.Label(pts, text='支援点数：', style="Card.TLabel").pack(side="left")
+        self.sup_pt_var = tk.StringVar(value="")
+        self.sup_pt_spin = ttk.Spinbox(pts, from_=0, to=supports.max_points(), increment=50,
+                                       width=8, textvariable=self.sup_pt_var,
+                                       command=self.sup_apply_points)
+        self.sup_pt_spin.pack(side="left", padx=(8, 0))
+        self.sup_pt_spin.bind("<Return>", lambda _e: (self.sup_apply_points(), "break")[1])
+        ttk.Button(pts, text='应用', style="Small.TButton",
+                   command=self.sup_apply_points).pack(side="left", padx=(6, 0))
+        ttk.Button(pts, text='最大', style="Small.TButton",
+                   command=lambda: self.sup_set_points(supports.max_points())
+                   ).pack(side="left", padx=(6, 0))
+        ttk.Button(pts, text="0", width=3, style="Small.TButton",
+                   command=lambda: self.sup_set_points(0)).pack(side="left", padx=(6, 0))
+        self.sup_pt_lbl = ttk.Label(pts, text="", style="CardFaint.TLabel")
+        self.sup_pt_lbl.pack(side="left", padx=(12, 0))
+
+        self.sup_tree = scrolled_tree(body, columns=("jp", "points", "lv", "next", "max", "seen", "party"),
+                                      show="tree headings", selectmode="browse")
+        self.sup_tree.heading("#0", text='支援对象', anchor="w")
+        self.sup_tree.heading("jp", text='日文', anchor="w")
+        self.sup_tree.heading("points", text='点数', anchor="e")
+        self.sup_tree.heading("lv", text='等级', anchor="center")
+        self.sup_tree.heading("next", text='下一等级点数', anchor="e")
+        self.sup_tree.heading("max", text='最高', anchor="center")
+        self.sup_tree.heading("seen", text='已观看对话', anchor="w")
+        self.sup_tree.heading("party", text='在队伍中', anchor="center")
+        self.sup_tree.column("#0", width=180, minwidth=130)
+        self.sup_tree.column("jp", width=140)
+        self.sup_tree.column("points", width=64, anchor="e", stretch=False)
+        self.sup_tree.column("lv", width=40, anchor="center", stretch=False)
+        self.sup_tree.column("next", width=96, anchor="e", stretch=False)
+        self.sup_tree.column("max", width=50, anchor="center", stretch=False)
+        self.sup_tree.column("seen", width=160, stretch=False)
+        self.sup_tree.column("party", width=74, anchor="center", stretch=False)
+        self.sup_tree.container.pack(fill="both", expand=True)
+        self.sup_tree.bind("<<TreeviewSelect>>", self.on_support_pair)
 
     def _party_pids(self) -> set[str]:
         try:
@@ -1310,8 +1423,66 @@ class App(AdvancedMixin, tk.Tk):
         self._sup_flag_cache = (key, flags)
         return flags
 
+    def _support_points(self):
+        """{pair hash: (points, extra, offset)} from the save's GameUserData."""
+        if not self.sv:
+            return None
+        key = (self.sv.path, id(self.sv.payload))
+        cache = getattr(self, "_sup_pt_cache", None)
+        if cache and cache[0] == key:
+            return cache[1]
+        try:
+            f = self.core_of()
+            blk = f.block("GameUserData")
+            table = supports.find_table(f.payload, blk.start, blk.end) if blk else None
+        except Exception:  # noqa: BLE001 — never break the page over a missing table
+            table = None
+        self._sup_pt_cache = (key, table)
+        return table
+
+    def _sup_chars(self) -> list[tuple[str, dict]]:
+        """Every character the point table knows, with the conversation chart merged in."""
+        chart = supports.by_char()
+        out: list[tuple[str, dict]] = []
+        seen: set[str] = set()
+        for jp, en in supports.point_chars():
+            rec = chart.get(jp) or {}
+            out.append((jp, {"jp": jp, "en": rec.get("en") or en or jp,
+                             "partners": rec.get("partners") or []}))
+            seen.add(jp)
+        for jp, rec in chart.items():
+            if jp not in seen:
+                out.append((jp, rec))
+        out.sort(key=lambda kv: (kv[1]["en"] or kv[0]).lower())
+        return out
+
+    def _top_points(self, jp: str, points) -> int | None:
+        """The pair with the most points this character has in this save."""
+        if not points:
+            return None
+        best = 0
+        for pa in supports.point_partners().get(jp, ()):
+            best = max(best, supports.points_of(points, pa["hash"]) or 0)
+        return best
+
+    def _sup_partners(self, jp: str, rec: dict, points) -> list[dict]:
+        """Every partner of ``jp`` with its points, richest support first."""
+        chart = {p["jp"]: p for p in (rec.get("partners") or [])}
+        table = supports.point_partners().get(jp) or []
+        src = ([{"jp": p["jp"], "en": p["en"], "hash": p["hash"]} for p in table]
+               or [{"jp": p["jp"], "en": p["en"], "hash": None}
+                   for p in (rec.get("partners") or [])])
+        out = []
+        for p in src:
+            out.append({"jp": p["jp"], "en": p["en"] or p["jp"], "hash": p["hash"],
+                        "points": supports.points_of(points, p["hash"]),
+                        "chart": chart.get(p["jp"]) or {}})
+        out.sort(key=lambda r: (-(r["points"] or 0), r["en"].lower()))
+        return out
+
     def refresh_supports(self):
         self._sup_flag_cache = None
+        self._sup_pt_cache = None
         self.refresh_support_chars()
         self.on_support_char()
 
@@ -1325,27 +1496,35 @@ class App(AdvancedMixin, tk.Tk):
             return
         q = self.sup_search.get_query().strip().lower()
         party = self._party_pids() if (self.sv and self.sup_party_only.get()) else None
+        keep = getattr(self, "_sup_char", None)
+        points = self._support_points()
         self.sup_char_tree.delete(*self.sup_char_tree.get_children())
         self._sup_rows = {}
+        iids: dict[str, str] = {}
         first = None
         n = 0
-        for jp, rec in supports.chars():
+        for jp, rec in self._sup_chars():
             original = rec["en"] or jp
             en = self._support_name(jp, original)
             if q and q not in en.lower() and q not in original.lower() and q not in jp.lower():
                 continue
             if party is not None and ("PID_" + jp) not in party:
                 continue
+            top = self._top_points(jp, points)
             iid = self.sup_char_tree.insert("", "end", text=en,
-                                            values=(len(rec["partners"]),))
+                                            values=(len(rec.get("partners") or []),
+                                                    "" if top is None else f"{top:,}"))
             self._sup_rows[iid] = (jp, rec)
+            iids[jp] = iid
             n += 1
             first = first or iid
         self.sup_count.configure(text=f"{n} 名角色" + ("（本存档中）" if party is not None else ""))
-        if first:
-            self.sup_char_tree.selection_set(first)
+        target = iids.get(keep or "") or first
+        if target:
+            self.sup_char_tree.selection_set(target)
             self.on_support_char()
         else:
+            self._sup_char = None
             self.sup_tree.delete(*self.sup_tree.get_children())
             self.sup_name.configure(text='没有可显示的内容')
             self.sup_sub.configure(text="请打开存档，或取消“仅显示此存档中的角色”。")
@@ -1356,33 +1535,96 @@ class App(AdvancedMixin, tk.Tk):
         if not sel or sel[0] not in rows:
             return
         jp, rec = rows[sel[0]]
-        en = self._support_name(jp, rec["en"])
+        en = self._support_name(jp, rec["en"] or jp)
+        if getattr(self, "_sup_char", None) != jp:
+            self._sup_partner = None          # new character: don't keep the old partners
+            self._sup_keep = []
+        self._sup_char = jp
         self.sup_name.configure(text=en)
         self.sup_avatar.show(en, "PID_" + jp)
 
         present = self._support_flags()
+        points = self._support_points()
         party = self._party_pids()
+        keep = getattr(self, "_sup_partner", None)
+        plist = self._sup_partners(jp, rec, points)
         self.sup_tree.delete(*self.sup_tree.get_children())
         self._sup_pairs = {}
+        self._sup_pt = {}
+        iids: dict[str, str] = {}
         seen_pairs = 0
-        best = ""
-        for pa in rec["partners"]:
-            got = [r for r in supports.RANKS if supports.seen(pa, present).get(r)]
+        for pa in plist:
+            got = [r for r in supports.RANKS if supports.seen(pa["chart"], present).get(r)]
             if got:
                 seen_pairs += 1
-            if pa["max"] in supports.RANKS:
-                if not best or supports.RANKS.index(pa["max"]) > supports.RANKS.index(best):
-                    best = pa["max"]
-            iid = self.sup_tree.insert("", "end", text=self._support_name(pa["jp"], pa["en"]),
-                                       values=(pa["jp"], pa["max"] or "—",
-                                               ", ".join(got) if got else "—",
-                                               "✓" if ("PID_" + pa["jp"]) in party else ""),
-                                       tags=("sup_seen",) if got else ("sup_none",))
-            self._sup_pairs[iid] = ({"a_en": en, "b_en": pa["en"] or pa["jp"]},
-                                    dict(pa.get("flags") or {}))
+            pts = pa["points"]
+            iid = self.sup_tree.insert(
+                "", "end", text=self._support_name(pa["jp"], pa["en"]),
+                values=(pa["jp"],
+                        "—" if pts is None else f"{pts:,}",
+                        "—" if pts is None else supports.level_of(pts),
+                        self._next_level_text(pts),
+                        pa["chart"].get("max") or "—",
+                        ", ".join(got) if got else "—",
+                        "✓" if ("PID_" + pa["jp"]) in party else ""),
+                tags=("sup_seen",) if (got or pts) else ("sup_none",))
+            self._sup_pairs[iid] = ({"a_en": en, "b_en": pa["en"]},
+                                    dict(pa["chart"].get("flags") or {}))
+            if pa["hash"] is not None:
+                self._sup_pt[iid] = (pa["hash"], pts, pa["jp"])
+            iids[pa["jp"]] = iid
         self._paint_support_tags()
+        best = max((pa["points"] or 0) for pa in plist) if plist else 0
         self.sup_sub.configure(
-            text=f"{len(rec['partners'])} 组对话 · 最高 {best or '—'} · 本存档已记录 {seen_pairs} 组")
+            text=f"{len(plist)} 组支援 · 最高 {best:,} 点 · 本存档已记录 {seen_pairs} 组对话")
+        if iids:
+            # keep every partner that was selected (an edit rebuilds the list
+            # and re-sorts it by points), else the remembered one, else the top
+            kept = [iids[j] for j in (getattr(self, "_sup_keep", None) or []) if j in iids]
+            if not kept:
+                kept = [iids.get(keep or "") or next(iter(iids.values()))]
+            target = kept[0]
+            self._sup_partner = next(k for k, v in iids.items() if v == target)
+            self.sup_tree.selection_set(kept)
+            self.sup_tree.focus(target)
+            self.sup_tree.see(target)
+            self.on_support_pair()
+
+    @staticmethod
+    def _next_level_text(pts) -> str:
+        if pts is None:
+            return "—"
+        nxt = supports.next_level_at(pts)
+        return "max" if nxt is None else f"{nxt:,}"
+
+    def on_support_pair(self, _e=None):
+        """Mirror the selected pair's points into the editor row."""
+        if not hasattr(self, "sup_pt_var"):
+            return
+        sel = self.sup_tree.selection() if hasattr(self, "sup_tree") else ()
+        pt = getattr(self, "_sup_pt", {})
+        if sel:
+            # remember the selection by name so a rebuild can restore it
+            self._sup_keep = [self.sup_tree.item(i, "values")[0] for i in sel]
+            self._sup_partner = self._sup_keep[0]
+        if not sel or sel[0] not in pt:
+            self.sup_pt_var.set("")
+            self.sup_pt_lbl.configure(text="")
+            return
+        if len(sel) > 1:
+            n = sum(1 for i in sel if i in pt)
+            self.sup_pt_lbl.configure(
+                text=f"已选择 {len(sel)} 组支援：应用 / 最大 / 0 会同时设置其中 {n} 组")
+            return
+        _h, pts, _jp = pt[sel[0]]
+        self.sup_pt_var.set("" if pts is None else str(pts))
+        name = self.sup_tree.item(sel[0], "text")
+        self.sup_pt_lbl.configure(
+            text=(f"{name}：{pts:,} / {supports.max_points():,} 点 · "
+                  f"等级 {supports.level_of(pts)}"
+                  + (f"，下一等级 {supports.next_level_at(pts):,}"
+                     if supports.next_level_at(pts) else "（满级）"))
+            if pts is not None else f"{name}：此存档中没有记录")
 
     def _paint_support_tags(self):
         p = self.p
@@ -1394,11 +1636,25 @@ class App(AdvancedMixin, tk.Tk):
         self.bind_all("<Control-s>", lambda e: self.save_all())
         self.bind_all("<Control-o>", lambda e: self.open_dialog())
         self.bind_all("<Control-f>", self._focus_search)
+        self.bind_all("<Control-a>", self._select_all_focused)
         self.bind_all("<F5>", lambda e: self.reload())
         self.bind_all("<Control-z>", lambda e: (self.undo(), "break")[1])
         self.bind_all("<Control-y>", lambda e: (self.redo(), "break")[1])
         self.bind("<FocusIn>", lambda e: self.after_idle(self._check_disk)
                   if e.widget is self else None)
+
+    def _select_all_focused(self, _e=None):
+        """Ctrl+A in a table selects every row; elsewhere it stays normal."""
+        w = self.focus_get()
+        if not isinstance(w, ttk.Treeview):
+            w = last_tree()
+        if isinstance(w, ttk.Treeview):
+            rows = w.get_children("")
+            if rows:
+                w.selection_set(rows)
+                w.focus(rows[-1])
+            return "break"
+        return None
 
     def _focus_search(self, _e=None):
         """Ctrl+F jumps to the search box of whatever page is showing."""
@@ -1417,6 +1673,18 @@ class App(AdvancedMixin, tk.Tk):
             target = self.cls_search
         elif sel == str(self.mounts_page):
             target = None
+        elif sel == str(self.world_page):
+            target = self.map_search
+        elif sel == str(self.tutorials_page):
+            target = self.tutorial_search
+        elif sel == str(self.fast_travel_page):
+            target = self.fast_travel_search
+        elif sel == str(self.facilities_page):
+            target = self.facility_search
+        elif sel == str(self.deeds_page):
+            target = self.deed_search
+        elif sel == str(self.boons_page):
+            target = self.boon_search
         if target is None:
             return
         target.focus_set()
@@ -1435,7 +1703,7 @@ class App(AdvancedMixin, tk.Tk):
 
     def _show_welcome(self):
         self.unit_name.configure(text='未打开存档文件夹')
-        self.unit_sub.configure(text="请使用“打开文件夹…”（Ctrl+O），选择存档文件夹中的"
+        self.unit_sub.configure(text="请使用“打开…”（Ctrl+O），选择存档文件夹中的"
                                      "任意槽位文件（Auto、Chapter_*、Route_*）。")
         self.flash("未自动找到 Eden 存档文件夹——请手动打开一个再开始。", "warn")
 
@@ -1445,10 +1713,13 @@ class App(AdvancedMixin, tk.Tk):
         for name in os.listdir(folder):
             path = os.path.join(folder, name)
             if is_slot_name(name) and os.path.isfile(path):
-                out.append(path)
+                try:
+                    out.append((path, os.path.getmtime(path)))
+                except OSError:
+                    continue  # A game save can disappear between listing and stat.
         # Auto (the live save) first, then the rest newest first
-        out.sort(key=lambda pth: (os.path.basename(pth) != "Auto", -os.path.getmtime(pth)))
-        return out
+        out.sort(key=lambda row: (os.path.basename(row[0]) != "Auto", -row[1]))
+        return [path for path, _ in out]
 
     def _get(self, path: str) -> SaveFile | None:
         """Cached SaveFile; re-read from disk when the game changed it (and we didn't)."""
@@ -1486,7 +1757,7 @@ class App(AdvancedMixin, tk.Tk):
 
     def open_folder(self, folder: str, prefer: str | None = None):
         slots = self._slot_files(folder)
-        if not slots and prefer:
+        if not slots and prefer and os.path.isfile(prefer):
             slots = [prefer]
         if not slots:
             messagebox.showerror(APP_NAME, f"文件夹中没有 Auto / Chapter_* / Route_* 槽位：\n{folder}")
@@ -1503,6 +1774,8 @@ class App(AdvancedMixin, tk.Tk):
                 self._get(pth)
             self._save_settings()
             target = os.path.abspath(prefer) if prefer else self._default_slot()
+            if target not in self.slot_paths:
+                target = self._default_slot()
             self._populate_slot_box()
             self.load(target)
         finally:
@@ -1524,8 +1797,14 @@ class App(AdvancedMixin, tk.Tk):
             star = "★ " if base == "Auto" else ""          # the live save
             # which lord / part / chapter the slot was saved in, read from the save
             route = layer.route_label(sv.payload) if sv else ""
+            try:
+                stamp = _fmt_time(os.path.getmtime(pth))
+            except FileNotFoundError:
+                stamp = "磁盘上已丢失——使用缓存副本" if sv else "磁盘上已丢失"
+            except OSError:
+                stamp = "磁盘上无法读取"
             labels.append(f"{mark}{star}{base}  ·  {route + '  ·  ' if route else ''}"
-                          f"{_fmt_time(os.path.getmtime(pth))}")
+                          f"{stamp}")
         self.slot_box.configure(values=labels)
         if self.sv is not None and self.sv.path in self.slot_paths:
             self.slot_box.current(self.slot_paths.index(self.sv.path))
@@ -1593,6 +1872,7 @@ class App(AdvancedMixin, tk.Tk):
         try:
             changed = [p for p in self.slot_paths if self._changed_on_disk(p)]
             if not changed:
+                self._populate_slot_box()  # Refresh missing/renamed-file labels too.
                 return
             clean = [p for p in changed if p not in self.dirty]
             if clean:
@@ -1643,6 +1923,31 @@ class App(AdvancedMixin, tk.Tk):
         if not self.dirty:
             self.flash("没有未保存的更改。")
             return True
+        missing = [p for p in self.dirty if not os.path.isfile(p)]
+        if missing:
+            messagebox.showerror(APP_NAME,
+                "Nothing saved. These edited slots were removed or renamed on disk:\n\n"
+                + "\n".join(os.path.basename(p) for p in sorted(missing))
+                + "\n\nYour edits are still in memory. Restore the original file(s) before saving, "
+                  "or use Reload to discard the edits and read the current folder.", parent=self)
+            self._populate_slot_box()
+            return False
+        import story_files
+        try:
+            chapter_writes = story_files.prepare(self.files, self.dirty)
+        except Exception as exc:  # noqa: BLE001 — preflight must not write anything
+            messagebox.showerror(APP_NAME, f"未保存：\n\n{exc}", parent=self)
+            return False
+        for plan in chapter_writes.values():
+            if plan.previous is not None and not messagebox.askyesno(
+                    "替换章节起始文件？",
+                    f"{os.path.basename(plan.target)} 已存在。\n\n"
+                    "要用本次暂存的章节起始状态替换它吗？现有文件会先保留为 .bak"
+                    "（若已存在更早的备份，则使用下一个编号 .bak）。\n\n"
+                    "选“否”将取消本次保存；所有编辑和章节文件请求仍保持待处理。",
+                    parent=self, icon="warning"):
+                self.flash("未保存——已保留现有的章节文件。", "warn")
+                return False
         newer = [p for p in self.dirty if self._changed_on_disk(p)]
         if newer and not messagebox.askyesno(
                 APP_NAME, "自编辑器读取以来，游戏又保存了 "
@@ -1658,7 +1963,21 @@ class App(AdvancedMixin, tk.Tk):
             if not sv:
                 continue
             try:
+                plan = chapter_writes.get(pth)
+                if plan:
+                    story_files.check_unchanged(plan)
+                    if story_files.path_key(plan.target) != story_files.path_key(pth):
+                        story_files.write(plan)
+                        # A completed file is not repeated if the source save fails.
+                        story_files.completed(self, sv)
+                        self.files.pop(plan.target, None)
+                        self._get(plan.target)
+                        if plan.target not in self.slot_paths:
+                            self.slot_paths.append(plan.target)
+                        written.append(os.path.basename(plan.target))
                 sv.save(pth)
+                if plan:
+                    story_files.completed(self, sv)
                 self.mtimes[pth] = os.path.getmtime(pth)
                 self.dirty.discard(pth)
                 written.append(os.path.basename(pth))
@@ -1667,11 +1986,12 @@ class App(AdvancedMixin, tk.Tk):
         self._populate_slot_box()
         self._update_file_label()
         self._update_dirty()
+        self.refresh_story()
         if failed:
             messagebox.showerror(APP_NAME, "以下槽位写入失败：\n\n"
                                  + "\n".join(failed) + "\n\n游戏是否仍在运行？")
             return False
-        self.flash(f"已保存 {', '.join(written)}。各槽位旁的 .bak 保留着原始存档。",
+        self.flash(f"已保存 {', '.join(written)}。被替换的存档副本会以编号 .bak 保存在旁边。",
                    "ok")
         return True
 
@@ -1702,17 +2022,13 @@ class App(AdvancedMixin, tk.Tk):
         return {u.uid for u in sv.units if not is_enemy(u)}
 
     def _same_route(self, other: SaveFile) -> bool:
-        """True when `other` holds the same playthrough as the open slot.
-
-        Each lord's route has its own party, convoy and gold (Auto may be
-        Theodora's route while Route_Ism is Ishmael's).  Slots of one route
-        share most of their party — an older Chapter_* slot just has fewer
-        members — so at least half of the smaller party must overlap.
-        """
-        a, b = self._party(self.sv), self._party(other)
-        if not a or not b:
+        """Match explicit character, part and playthrough, not party overlap."""
+        a, b = layer.route_info(self.sv.payload), layer.route_info(other.payload)
+        if not a or not b or a[:2] != b[:2]:
             return False
-        return len(a & b) * 2 >= min(len(a), len(b))
+        sa = core.read_settings(core.SaveFile(self.sv.payload))
+        sb = core.read_settings(core.SaveFile(other.payload))
+        return sa is not None and sb is not None and sa[0] == sb[0]
 
     @staticmethod
     def _is_checkpoint(path: str) -> bool:
@@ -1731,7 +2047,7 @@ class App(AdvancedMixin, tk.Tk):
             return []
         out = []
         for pth in self.slot_paths:
-            if pth == self.sv.path or self._is_checkpoint(pth):
+            if pth == self.sv.path or self._is_checkpoint(pth) or not os.path.isfile(pth):
                 continue
             sv = self._get(pth)
             if sv is not None and self._same_route(sv):
@@ -1804,6 +2120,11 @@ class App(AdvancedMixin, tk.Tk):
         q = self.unit_search.get_query().lower()
         units = sorted(self._unit_map().values(),
                        key=lambda u: (is_enemy(u), u.name.lower()))
+        import unit_entries
+        try:
+            numbers={u.person:g.unit_number for u,g in unit_entries.roster(self.core_of())} if self.sv else {}
+        except core.SaveError:
+            numbers={}
         shown = 0
         for u in units:
             enemy = is_enemy(u)
@@ -1814,7 +2135,7 @@ class App(AdvancedMixin, tk.Tk):
                 continue
             tree.insert("", "end", iid=str(u.uid), text=" " + u.name,
                         image=self._dot(_name_color(u.name), 10),
-                        values=(u.level,), tags=("enemy",) if enemy else ())
+                        values=(numbers.get(u.uid, '—'), u.level), tags=("enemy",) if enemy else ())
             shown += 1
         total = sum(1 for u in units if self.show_enemies.get() or not is_enemy(u))
         self.unit_count.configure(text=f"{shown}" if shown == total else f"{shown} / {total}")
@@ -2218,7 +2539,7 @@ class App(AdvancedMixin, tk.Tk):
         prev = select if select is not None else [int(i) for i in tree.selection()
                                                   if i.isdigit()]
         tree.delete(*tree.get_children())
-        conv = live_convoy(bytes(self.sv.payload)) if self.sv else None
+        conv = live_convoy(self.core_of()) if self.sv else None
         # live_convoy() returns every slot; only the filled ones are items
         self._conv_rows = [r for r in (conv.rows if conv else []) if r.qty and r.iid]
         names = item_ids()
@@ -2275,7 +2596,6 @@ class App(AdvancedMixin, tk.Tk):
                 "原始文件保留在槽位的 .bak 中。",
                 parent=self):
             return
-        self.push_undo()
         if self._core_edit(lambda f: (layer.repair_convoy(f.payload) >= 0 and f.payload) or None,
                            "修复仓库"):
             self.flash(f"仓库已修复：{n_items} 件道具、{got[0]} 个槽位——按 Ctrl+S 写入。",
@@ -2347,6 +2667,21 @@ class App(AdvancedMixin, tk.Tk):
         qty = self._qty()
         if qty is None:
             return
+        # gear (weapons, tomes, shields…) never stacks: its quantity is the number of
+        # slots holding a copy, so those rows are handled by adding/removing slots
+        gear = sorted({self._conv_row(s).iid for s in slots
+                       if self._conv_row(s) and not layer.stacks(self._conv_row(s).iid)})
+        if gear:
+            for iid in gear:
+                if not self._core_edit(
+                        lambda f, i=iid: (layer.set_convoy_copies(f.payload, i, qty)
+                                          and f.payload) or None,
+                        f"Convoy: {item_label(iid)} ×{qty} (one slot per copy)"):
+                    break
+            slots = [s for s in slots if self._conv_row(s) and layer.stacks(self._conv_row(s).iid)]
+            if not slots:
+                self.refresh_convoy()
+                return
         n = self._convoy_edit(slots, lambda p, r: set_convoy_qty(p, r, qty))
         self.refresh_convoy(select=slots)
         self.flash(f"数量 → {qty}（{len(slots)} 行）" + (f"，共 {n} 个存档" if n > 1 else ""))

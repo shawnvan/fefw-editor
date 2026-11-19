@@ -17,7 +17,25 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 import fefw_core as core
-from fefw_save import chinese_name, item_ids, item_label, unit_ids
+import supports
+from ui_util import ScrollableFrame
+from fefw_save import chinese_name, is_slot_name, item_ids, item_label, unit_ids
+from map_page import MapPageMixin
+from tutorial_page import TutorialPageMixin
+from blessing_page import BlessingPageMixin
+from fast_travel_page import FastTravelPageMixin
+import fast_travel
+import deeds
+from deed_page import DeedPageMixin
+from boon_page import BoonPageMixin
+from facility_page import FacilityPageMixin
+from story_page import StoryPageMixin
+from unit_entry_page import UnitEntryPageMixin
+import audiences
+import facilities
+import tutorials
+import flag_labels
+from ui_util import enable_multi_select
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 APP_NAME = "Fortune's Weave Save Editor"
@@ -90,10 +108,12 @@ def flag_names() -> dict:
     global _FLAG_NAMES
     if _FLAG_NAMES is None:
         try:
-            raw = json.load(open(os.path.join(HERE, "flag_names.json"), encoding="utf8"))
+            with open(os.path.join(HERE, "flag_names.json"), encoding="utf8") as fh:
+                raw = json.load(fh)
             _FLAG_NAMES = {int(k, 16): v for k, v in raw.items()}
         except Exception:                     # noqa: BLE001 — the page still works
             _FLAG_NAMES = {}
+        flag_labels.apply_labels(_FLAG_NAMES, strict=False)
     return _FLAG_NAMES
 
 
@@ -118,46 +138,62 @@ def rank_of(exp: int) -> int:
     return r
 
 
-class AdvancedMixin:
+def matching_flag_map(source, target, map_i):
+    """Resolve a mirrored flag list by its member hash, never by scan order."""
+    selected = next((m for m in core.flag_maps(source) if m.index == map_i), None)
+    if selected is None:
+        raise core.SaveError('The selected flag list no longer exists.')
+    if source.payload == target.payload:
+        return selected
+    tree, group, _ = facilities.flag_group(source)
+    node = tree.nodes[group]; table = source.ptr(node.start)
+    keys = [source.u32(table+8*i) for i in range(source.u32(node.start) >> 24)
+            if source.ptr(table+8*i+4) == selected.start]
+    if len(keys) != 1:
+        raise core.SaveError('This flag list has no established identity for mirroring. Edit it with mirroring off.')
+    return facilities.locate_member(target, keys[0])
+
+
+class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTravelPageMixin, DeedPageMixin, BoonPageMixin, FacilityPageMixin, StoryPageMixin, UnitEntryPageMixin):
     # ------------------------------------------------------------- helpers
     def core_of(self, sv=None):
-        """fefw_core.SaveFile for a slot (cached on the payload object)."""
+        """Decoded slot, reused only while its source bytes are unchanged."""
         sv = sv or self.sv
         if sv is None:
             return None
         key = (sv.path, id(sv.payload))
         cache = getattr(sv, "_core_cache", None)
-        if cache and cache[0] == key:
+        if cache and cache[0] == key and cache[1].payload == sv.payload:
             return cache[1]
         f = core.SaveFile(bytes(sv.payload))
         sv._core_cache = (key, f)
         return f
 
     def _core_edit(self, fn, what: str) -> bool:
-        """fn(fefw_core.SaveFile) -> new payload; applied to every target slot."""
+        """Preflight every target, then stage one undoable multi-slot edit."""
         if not self.sv:
             return False
         self._commit_form()
-        touched, err = [], None
+        changes = []
         for sv in self._targets():
             try:
                 f = core.SaveFile(bytes(sv.payload))
                 new = fn(f)
-            except core.SaveError as exc:
-                err = exc
-                continue
-            except Exception as exc:          # noqa: BLE001 — report, never crash
-                err = exc
-                continue
+            except Exception as exc:          # noqa: BLE001 — atomic preflight
+                self.flash(f'未做更改：{os.path.basename(sv.path)} —— {exc}', 'error')
+                return False
             if new is None or bytes(new) == bytes(sv.payload):
                 continue
-            sv.payload = bytearray(new)
+            changes.append((sv, bytearray(new)))
+        if not changes:
+            self.flash(f'已是该值：{what}。', 'info')
+            return False
+        touched = [sv for sv, _ in changes]
+        self.push_undo(slots=touched)
+        for sv, new in changes:
+            sv.payload = new
             sv.scan()
             sv._core_cache = None
-            touched.append(sv)
-        if not touched:
-            self.flash(f"无法应用“{what}”" + (f"：{err}" if err else "。"), "error")
-            return False
         self._touch(touched)
         self.refresh_after_core()
         where = f"（{len(touched)} 个槽位）" if len(touched) > 1 else ""
@@ -173,11 +209,25 @@ class AdvancedMixin:
         self.refresh_classes_page()
         self.refresh_flags()
         self.refresh_supports()
+        self.refresh_world_map()
+        self.refresh_tutorials()
+        self.refresh_blessings()
+        self.refresh_fast_travel()
+        self.refresh_facilities()
+        self.refresh_deeds()
+        self.refresh_boons()
 
     def refresh_core_pages(self):
         self.refresh_player()
         self.refresh_classes_page()
         self.refresh_flags()
+        self.refresh_world_map()
+        self.refresh_tutorials()
+        self.refresh_blessings()
+        self.refresh_fast_travel()
+        self.refresh_facilities()
+        self.refresh_deeds()
+        self.refresh_boons()
 
     # -------------------------------------------------------- pick a value
     def _picker(self, title: str, rows, current: int | None = None):
@@ -240,8 +290,10 @@ class AdvancedMixin:
 
     # ============================================================ PLAYER
     def _build_player(self):
-        page = self.player_page
-        card = ttk.Frame(page, style="Card.TFrame", padding=(16, 14))
+        self.player_scroll = ScrollableFrame(self.player_page)
+        self.player_scroll.pack(fill="both", expand=True)
+        page = self.player_scroll.body
+        card = ttk.Frame(page, style="Card.TFrame", padding=(16, 10))
         card.pack(fill="x")
         ttk.Label(card, text='玩家', style="CardH3.TLabel").pack(anchor="w")
         ttk.Label(card, text="全军共用的数值，保存在存档的玩家数据中。",
@@ -266,10 +318,11 @@ class AdvancedMixin:
                                      justify="left")
         self.player_note.grid(row=3, column=0, columnspan=3, sticky="w", pady=(10, 0))
 
-        card2 = ttk.Frame(page, style="Card.TFrame", padding=(16, 14))
+        card2 = ttk.Frame(page, style="Card.TFrame", padding=(16, 10))
         card2.pack(fill="x", pady=(10, 0))
         ttk.Label(card2, text='本周目设置', style="CardH3.TLabel").pack(anchor="w")
-        ttk.Label(card2, text="写入存档保留的每一份副本（头部、摘要和各个重启点）。",
+        ttk.Label(card2, text="写入存档保留的每一份副本（头部、摘要和各个重启点），"
+                             "也写入此文件夹的每个槽位（本周目的难度也包含在内）。",
                   style="CardMuted.TLabel").pack(anchor="w", pady=(2, 8))
         row = ttk.Frame(card2, style="Card.TFrame")
         row.pack(fill="x")
@@ -287,8 +340,10 @@ class AdvancedMixin:
         cb2.bind("<<ComboboxSelected>>", lambda e: self.apply_settings())
         self.play_lbl = ttk.Label(card2, text="", style="CardFaint.TLabel")
         self.play_lbl.pack(anchor="w", pady=(10, 0))
+        self._build_story(page)
 
     def refresh_player(self):
+        self.refresh_story()
         if not hasattr(self, "player_vars"):
             return
         f = self.core_of()
@@ -309,7 +364,20 @@ class AdvancedMixin:
         if st:
             self.diff_var.set(DIFFICULTIES[st[1]] if st[1] < 3 else str(st[1]))
             self.mode_var.set(MODES[st[2]] if st[2] < 2 else str(st[2]))
-            self.play_lbl.configure(text=f"第 {st[0]} 周目")
+            line = f"第 {st[0]} 周目"
+            counts: dict[tuple[int, int], int] = {}
+            for sv in getattr(self, "files", {}).values():
+                q = sv.payload
+                if len(q) > 15 and q[12] == 15:
+                    counts[(q[15], q[14])] = counts.get((q[15], q[14]), 0) + 1   # (difficulty, mode)
+            if len(counts) <= 1:
+                line += (f" · 各槽位一致：{DIFFICULTIES[st[1]] if st[1] < 3 else st[1]}"
+                         f" / {MODES[st[2]] if st[2] < 2 else st[2]}")
+            else:
+                bits = [f"{DIFFICULTIES[a] if a < 3 else a}/{MODES[b] if b < 2 else b} ×{n}"
+                        for (a, b), n in sorted(counts.items())]
+                line += " · 槽位不一致 —— " + " · ".join(bits)
+            self.play_lbl.configure(text=line)
         self.player_note.configure(
             text="声望经验是全军的累计值；等级本身由游戏自己的 Reward.bin 表决定，"
                  "把数值设在两级之间即可停在想要的等级上。")
@@ -348,18 +416,40 @@ class AdvancedMixin:
             m = MODES.index(self.mode_var.get())
         except ValueError:
             return
+        f0 = self.core_of()
+        cur = core.read_settings(f0) if f0 is not None else None
+        if cur and cur[1] == d and cur[2] == m:
+            return
 
-        def edit(g):
-            offs = settings_offsets(g)
-            if not offs:
-                return None
-            for at in offs:
-                g.payload[at] = d & 0xFF
-                g.payload[at + 1] = m & 0xFF
-            core.fix_embedded_hashes(g.payload)
-            return g.payload
-
-        self._core_edit(edit, f"{DIFFICULTIES[d]} / {MODES[m]}")
+        # Difficulty and mode are properties of the run, not of one slot: the
+        # game's save screen shows them for every slot, so write them into the
+        # whole folder (Auto, Chapter_* and Route_*), not only the open one.
+        touched, err = [], None
+        for sv in list(getattr(self, "files", {}).values()):
+            try:
+                g = core.SaveFile(bytes(sv.payload))
+                offs = settings_offsets(g)
+                if not offs:
+                    continue
+                for at in offs:
+                    g.payload[at] = m & 0xFF          # mode comes first
+                    g.payload[at + 1] = d & 0xFF      # then difficulty
+                core.fix_embedded_hashes(g.payload)
+                if bytes(g.payload) == bytes(sv.payload):
+                    continue
+                sv.payload = bytearray(g.payload)
+                sv.scan()
+                sv._core_cache = None
+                touched.append(sv)
+            except Exception as exc:          # noqa: BLE001 — report, never crash
+                err = exc
+        if not touched:
+            self.flash("无法应用难度/模式" + (f"：{err}" if err else "。"), "error")
+            return
+        self._touch(touched)
+        self.refresh_after_core()
+        where = f"（共 {len(touched)} 个槽位）" if len(touched) > 1 else "（本槽位）"
+        self.flash(f"{DIFFICULTIES[d]} / {MODES[m]} {where}——按 Ctrl+S 写入。", "ok")
 
     # ============================================================ CLASSES
     def _build_classes(self):
@@ -416,18 +506,19 @@ class AdvancedMixin:
         bar = ttk.Frame(cbox, style="Card.TFrame")
         bar.pack(fill="x")
         ttk.Label(bar, text='角色拥有的职业', style="CardH3.TLabel").pack(side="left")
-        for text, cmd in (("添加…", self.add_class), ("替换…", self.swap_class),
-                          ("移除", self.remove_class), ("设为当前", self.set_current_class)):
+        for text, cmd in (("设置经验…", self.set_class_exp), ("添加…", self.add_class),
+                          ("替换…", self.swap_class), ("移除", self.remove_class),
+                          ("设为当前", self.set_current_class)):
             ttk.Button(bar, text=text, style="Small.TButton", command=cmd).pack(side="right",
                                                                                padx=(6, 0))
         self.cls_tree = ttk.Treeview(cbox, columns=("value", "flags", "now"),
-                                     show="tree headings", selectmode="browse")
+                                     show="tree headings", selectmode="extended")
         self.cls_tree.heading("#0", text='职业', anchor="w")
-        self.cls_tree.heading("value", text='数值', anchor="e")
+        self.cls_tree.heading("value", text='职业经验', anchor="e")
         self.cls_tree.heading("flags", text='标记', anchor="e")
         self.cls_tree.heading("now", text="", anchor="center")
         self.cls_tree.column("#0", width=300)
-        self.cls_tree.column("value", width=70, anchor="e", stretch=False)
+        self.cls_tree.column("value", width=80, anchor="e", stretch=False)
         self.cls_tree.column("flags", width=70, anchor="e", stretch=False)
         self.cls_tree.column("now", width=40, anchor="center", stretch=False)
         cls_sb = ttk.Scrollbar(cbox, orient="vertical", command=self.cls_tree.yview)
@@ -435,18 +526,21 @@ class AdvancedMixin:
         self.cls_tree.pack(side="left", fill="both", expand=True, pady=(6, 0))
         cls_sb.pack(side="left", fill="y", pady=(6, 0))
         self.cls_tree.bind("<Double-1>", lambda e: self.set_current_class())
+        enable_multi_select(self.cls_tree)
 
         mbox = ttk.Frame(body, style="Card.TFrame", padding=(12, 10))
         body.add(mbox, weight=3)
         bar2 = ttk.Frame(mbox, style="Card.TFrame")
         bar2.pack(fill="x")
         ttk.Label(bar2, text='武器熟练度', style="CardH3.TLabel").pack(side="left")
+        self.mas_sel_lbl = ttk.Label(bar2, text="", style="CardMuted.TLabel")
+        self.mas_sel_lbl.pack(side="left", padx=(10, 0))
         for text, cmd in (("设置等级…", self.set_mastery_rank), ("设置经验…", self.set_mastery_exp),
                           ("添加…", self.add_mastery), ("移除", self.remove_mastery)):
             ttk.Button(bar2, text=text, style="Small.TButton", command=cmd).pack(side="right",
                                                                                padx=(6, 0))
         self.mas_tree = ttk.Treeview(mbox, columns=("rank", "exp", "next"),
-                                     show="tree headings", selectmode="browse")
+                                     show="tree headings", selectmode="extended")
         self.mas_tree.heading("#0", text='武器', anchor="w")
         self.mas_tree.heading("rank", text='等级', anchor="center")
         self.mas_tree.heading("exp", text='经验', anchor="e")
@@ -460,6 +554,8 @@ class AdvancedMixin:
         self.mas_tree.pack(side="left", fill="both", expand=True, pady=(6, 0))
         mas_sb.pack(side="left", fill="y", pady=(6, 0))
         self.mas_tree.bind("<Double-1>", lambda e: self.set_mastery_rank())
+        self.mas_tree.bind("<<TreeviewSelect>>", lambda e: self._on_mastery_select())
+        enable_multi_select(self.mas_tree)
 
         note = ttk.Frame(main, style="Card.TFrame")
         note.pack(fill="x", padx=(10, 0), pady=(6, 0))
@@ -550,6 +646,8 @@ class AdvancedMixin:
             self.cls_tree.insert("", "end", text=class_label(klass),
                                  values=(value, flags, "●" if klass == cid else ""),
                                  iid=str(i))
+        keep_uid, keep = getattr(self, "_mas_keep", (None, ()))
+        kept = []
         for i, (idx, exp) in enumerate(u.masteries):
             r = rank_of(exp)
             nxt = RANK_EXP[r + 1] if r + 1 < len(RANK_EXP) else None
@@ -557,6 +655,17 @@ class AdvancedMixin:
             self.mas_tree.insert("", "end", text=nm,
                                  values=(RANKS[r], exp, nxt if nxt is not None else "max"),
                                  iid=str(i))
+            if keep_uid == u.start and idx in keep:
+                kept.append(str(i))
+        # an edit rebuilds this list; keep the same weapons selected (by weapon,
+        # not row, because Add / Remove shift the rows)
+        if kept:
+            self.mas_tree.selection_set(kept)
+            self.mas_tree.focus(kept[0])
+            self.mas_tree.see(kept[0])
+        else:
+            self._mas_keep = (None, ())
+        self._on_mastery_select()
 
     # -- class actions
     def _class_rows(self):
@@ -600,6 +709,45 @@ class AdvancedMixin:
             return g.payload
 
         self._core_edit(edit, f"当前职业 → {class_label(cid)}")
+
+    def _class_entries(self) -> list[int]:
+        """Selected class rows (entry index), in list order."""
+        sel = self.cls_tree.selection() if hasattr(self, "cls_tree") else ()
+        out = sorted({int(i) for i in sel if str(i).isdigit()})
+        return out
+
+    def set_class_exp(self):
+        """Set the class exp ("progress") saved with each selected class."""
+        u = self._cls_unit()
+        entries = self._class_entries()
+        if u is None or not entries:
+            self.flash("请先选择职业行。", "info")
+            return
+        cur = u.classes[entries[0]][1] if len(entries) == 1 else 0
+        many = len(entries) > 1
+        prompt = ("所选职业的职业经验（0 – 255）：" if many
+                  else "该职业保存的职业经验（0 – 255）：")
+        val = _ask_number(self, "职业经验", prompt, cur, 255)
+        if val is None:
+            return
+
+        def edit(g):
+            v = next((x for x in g.units() if x.start == u.start), None)
+            if v is None:
+                return None
+            classes = list(v.classes)
+            changed = False
+            for i in entries:
+                if classes[i][1] != val:
+                    classes[i] = (classes[i][0], val, classes[i][2])
+                    changed = True
+            if not changed:
+                return None
+            return core.with_lists(g, v, v.masteries, classes)
+
+        what = (f"{class_label(u.classes[entries[0]][0])}职业经验 → {val}" if not many
+                else f"{len(entries)} 个职业的经验 → {val}")
+        self._core_edit(edit, what)
 
     def add_class(self):
         u = self._cls_unit()
@@ -650,69 +798,131 @@ class AdvancedMixin:
 
     def remove_class(self):
         u = self._cls_unit()
-        sel = self.cls_tree.selection()
-        if u is None or not sel:
+        entries = self._class_entries()
+        if u is None or not entries:
             return
-        entry = int(sel[0])
-        if u.classes[entry][0] == u.klass:
-            messagebox.showinfo("存档编辑器", "这是该角色的当前职业。请先更改当前职业，"
+        if any(u.classes[i][0] == u.klass for i in entries):
+            messagebox.showinfo("存档编辑器", "其中包含该角色的当前职业。请先更改当前职业，"
                                                "或使用“替换”。", parent=self)
-            return
-        cid = u.classes[entry][0]
+            entries = [i for i in entries if u.classes[i][0] != u.klass]
+            if not entries:
+                return
+        names = [class_label(u.classes[i][0]) for i in entries]
 
         def edit(g):
             v = next((x for x in g.units() if x.start == u.start), None)
             if v is None:
                 return None
-            classes = [c for i, c in enumerate(v.classes) if i != entry]
+            classes = [c for i, c in enumerate(v.classes) if i not in set(entries)]
             return core.with_lists(g, v, v.masteries, classes)
 
-        self._core_edit(edit, f"已移除职业 {class_label(cid)}")
+        what = (f"已移除职业 {names[0]}" if len(names) == 1
+                else f"已移除 {len(names)} 个职业")
+        self._core_edit(edit, what)
 
     # -- mastery actions
+    def _mastery_entries(self) -> list[int]:
+        """Selected mastery rows (entry index), in list order."""
+        sel = self.mas_tree.selection() if hasattr(self, "mas_tree") else ()
+        return sorted({int(i) for i in sel if str(i).isdigit()})
+
+    def _mastery_names(self, u, entries) -> list[str]:
+        out = []
+        for i in entries:
+            idx = u.masteries[i][0]
+            out.append(MASTERIES[idx][0] if 0 <= idx < len(MASTERIES) else f"#{idx}")
+        return out
+
+    def _remember_masteries(self, u, entries, extra=()):
+        """Keep these weapons selected when the edit rebuilds the list."""
+        self._mas_keep = (u.start, {u.masteries[i][0] for i in entries} | set(extra))
+
+    def _on_mastery_select(self):
+        if not hasattr(self, "mas_sel_lbl"):
+            return
+        n = len(self._mastery_entries())
+        self.mas_sel_lbl.configure(
+            text=f"已选择 {n} 项：设置等级 / 设置经验 / 移除 会同时作用于这 {n} 项" if n > 1 else "")
+
+    @staticmethod
+    def _short_list(names, limit: int = 4) -> str:
+        return ", ".join(names[:limit]) + (f" 等{len(names) - limit}项"
+                                          if len(names) > limit else "")
+
     def set_mastery_rank(self):
         u = self._cls_unit()
-        sel = self.mas_tree.selection()
-        if u is None or not sel:
+        entries = self._mastery_entries()
+        if u is None or not entries:
+            self.flash("请先选择武器熟练度行。", "info")
             return
-        entry = int(sel[0])
+        names = self._mastery_names(u, entries)
         rows = [(i, RANKS[i], f"{RANK_EXP[i]} 经验") for i in range(len(RANKS))]
-        r = self._picker(f"{MASTERIES[u.masteries[entry][0]][0]}的等级", rows)
+        if len(entries) == 1:
+            title = f"{names[0]}的等级"
+            current = rank_of(u.masteries[entries[0]][1])
+        else:
+            title = f"{len(entries)} 项熟练度的等级（{self._short_list(names)}）"
+            current = None
+        r = self._picker(title, rows, current)
         if r is None:
             return
         exp = RANK_EXP[r]
+        self._remember_masteries(u, entries)
 
         def edit(g):
             v = next((x for x in g.units() if x.start == u.start), None)
             if v is None:
                 return None
             mas = list(v.masteries)
-            mas[entry] = (mas[entry][0], exp)
-            new = core.with_lists(g, v, mas, list(v.classes))
-            return new
+            changed = False
+            for i in entries:
+                if i < len(mas) and mas[i][1] != exp:
+                    mas[i] = (mas[i][0], exp)
+                    changed = True
+            if not changed:
+                return None
+            return core.with_lists(g, v, mas, list(v.classes))
 
-        self._core_edit(edit, f"{MASTERIES[u.masteries[entry][0]][0]} → {RANKS[r]}")
+        what = (f"{names[0]} → {RANKS[r]}" if len(entries) == 1
+                else f"{len(entries)} 项熟练度 → {RANKS[r]}")
+        self._core_edit(edit, what)
 
     def set_mastery_exp(self):
         u = self._cls_unit()
-        sel = self.mas_tree.selection()
-        if u is None or not sel:
+        entries = self._mastery_entries()
+        if u is None or not entries:
+            self.flash("请先选择武器熟练度行。", "info")
             return
-        entry = int(sel[0])
-        cur = u.masteries[entry][1]
-        val = _ask_number(self, "熟练度经验", "该武器的经验值（0 – 65535）：", cur, 65535)
-        if val is None or val == cur:
+        names = self._mastery_names(u, entries)
+        cur = u.masteries[entries[0]][1] if len(entries) == 1 else 0
+        if len(entries) == 1:
+            prompt = f"{names[0]}的经验值（0 – 65535）："
+        else:
+            prompt = f"{len(entries)} 项熟练度（{self._short_list(names)}）的经验值（0 – 65535）："
+        val = _ask_number(self, "熟练度经验", prompt, cur, 65535)
+        if val is None:
             return
+        self._remember_masteries(u, entries)
 
         def edit(g):
             v = next((x for x in g.units() if x.start == u.start), None)
             if v is None:
                 return None
             mas = list(v.masteries)
-            mas[entry] = (mas[entry][0], val)
+            changed = False
+            for i in entries:
+                if i < len(mas) and mas[i][1] != val:
+                    mas[i] = (mas[i][0], val)
+                    changed = True
+            if not changed:
+                return None
             return core.with_lists(g, v, mas, list(v.classes))
 
-        self._core_edit(edit, f"{MASTERIES[u.masteries[entry][0]][0]}经验 → {val}")
+        if len(entries) == 1:
+            what = f"{names[0]}经验 → {val}"
+        else:
+            what = f"{len(entries)} 项熟练度的经验 → {val}"
+        self._core_edit(edit, what)
 
     def add_mastery(self):
         u = self._cls_unit()
@@ -727,6 +937,7 @@ class AdvancedMixin:
         idx = self._picker("添加武器熟练度", rows)
         if idx is None:
             return
+        self._mas_keep = (u.start, {idx})
 
         def edit(g):
             v = next((x for x in g.units() if x.start == u.start), None)
@@ -739,24 +950,32 @@ class AdvancedMixin:
 
     def remove_mastery(self):
         u = self._cls_unit()
-        sel = self.mas_tree.selection()
-        if u is None or not sel:
+        entries = self._mastery_entries()
+        if u is None or not entries:
+            self.flash("请先选择武器熟练度行。", "info")
             return
-        entry = int(sel[0])
-        idx = u.masteries[entry][0]
+        names = self._mastery_names(u, entries)
+        what_q = (f"{names[0]}熟练度" if len(entries) == 1
+                  else f"{len(entries)} 项熟练度（{self._short_list(names, 6)}）")
         if not messagebox.askyesno("存档编辑器",
-                                   f"移除 {unit_name(u.person)} 的 {MASTERIES[idx][0]}"
-                                   f"熟练度？", parent=self):
+                                   f"移除 {unit_name(u.person)} 的{what_q}？",
+                                   parent=self):
             return
+        drop = set(entries)
+        self._mas_keep = (None, ())
 
         def edit(g):
             v = next((x for x in g.units() if x.start == u.start), None)
             if v is None:
                 return None
-            mas = [m for i, m in enumerate(v.masteries) if i != entry]
+            mas = [m for i, m in enumerate(v.masteries) if i not in drop]
+            if len(mas) == len(v.masteries):
+                return None
             return core.with_lists(g, v, mas, list(v.classes))
 
-        self._core_edit(edit, f"已移除熟练度 {MASTERIES[idx][0]}")
+        what = (f"已移除熟练度 {names[0]}" if len(entries) == 1
+                else f"已移除 {len(entries)} 项熟练度")
+        self._core_edit(edit, what)
 
     # ============================================================== FLAGS
     def _build_flags(self):
@@ -780,7 +999,7 @@ class AdvancedMixin:
         quick = ttk.Frame(top, style="Card.TFrame")
         quick.pack(fill="x")
         for text, prefix in (("全部", ""), ("支援", "支援会話_"), ("已加入", "加入_"),
-                             ("已会面", "面識_"), ("成就", "実績_"),
+                             ("已会面", "面識_"), ("成就", "実績_"), ("教程", "TUTO_"),
                              ("扩展职业", "兵種解放_")):
             ttk.Button(quick, text=text, style="Small.TButton",
                        command=lambda p=prefix: self.set_flag_filter(p)).pack(side="left",
@@ -864,30 +1083,25 @@ class AdvancedMixin:
         cur = next((fl.value for m in core.flag_maps(f) for fl in m.flags
                     if m.index == map_i and fl.hash == hash_), 0)
         val = _ask_number(self, "标记数值", "新数值（0 – 2147483647）：", cur, 2_147_483_647)
-        if val is None or val == cur:
+        if val is None or (val == cur and not self.mirror.get()):
             return
         self._write_flag(map_i, hash_, val)
 
     def _write_flag(self, map_i: int, hash_: int, value: int):
-        def edit(g):
-            maps = core.flag_maps(g)
-            m = next((x for x in maps if x.index == map_i), None)
-            if m is None:
-                return None
-            fl = next((x for x in m.flags if x.hash == hash_), None)
-            if fl is None:
-                return core.flag_add(g, m, hash_, value)
-            start = fl.offset - 5 if fl.wide else fl.offset - 4
-            size = 9 if fl.wide else 5
-            b = bytearray(g.payload[start:start + size])
-            if fl.wide:
-                b[5:9] = core.struct.pack("<i", value)
-            else:
-                b[4] = value & 0xFF
-            return core.replace_content(g, m.start, bytes(b))
-
-        name = (flag_names().get(hash_) or {}).get("label") or "0x%08x" % hash_
-        self._core_edit(edit, f"{name} = {value}")
+        if not self.sv:
+            return
+        source = core.SaveFile(self.sv.payload)
+        selected_map = next((m for m in core.flag_maps(source) if m.index == map_i), None)
+        if selected_map is None or not any(fl.hash == hash_ for fl in selected_map.flags):
+            self.flash('所选标记已不存在。请刷新列表。', 'error')
+            return
+        def edit(f):
+            fm = matching_flag_map(source, f, map_i)
+            if any(fl.hash == hash_ for fl in fm.flags):
+                return core.flag_set(f, fm, hash_, value)
+            return core.flag_add(f, fm, hash_, value)
+        name = (flag_names().get(hash_) or {}).get('label') or '0x%08x' % hash_
+        self._core_edit(edit, f'{name} = {value}')
 
     def remove_flag(self):
         key = self._flag_sel()
@@ -898,15 +1112,11 @@ class AdvancedMixin:
         if not messagebox.askyesno("存档编辑器", f"移除标记 {name}？", parent=self):
             return
 
+        source = core.SaveFile(self.sv.payload)
         def edit(g):
-            for m in core.flag_maps(g):
-                if m.index != map_i:
-                    continue
-                fl = next((x for x in m.flags if x.hash == hash_), None)
-                if fl is None:
-                    return None
-                return core.flag_remove(g, m, fl)
-            return None
+            m = matching_flag_map(source, g, map_i)
+            fl = next((x for x in m.flags if x.hash == hash_), None)
+            return core.flag_remove(g, m, fl) if fl else g.payload
 
         self._core_edit(edit, f"已移除 {name}")
 
@@ -928,11 +1138,12 @@ class AdvancedMixin:
             return
         target = maps[0].index
 
+        source = core.SaveFile(self.sv.payload)
         def edit(g):
-            ms = core.flag_maps(g)
-            if not ms:
-                return None
-            return core.flag_add(g, ms[0], hash_, val)
+            m = matching_flag_map(source, g, target)
+            if any(fl.hash == hash_ for fl in m.flags):
+                return core.flag_set(g, m, hash_, val)
+            return core.flag_add(g, m, hash_, val)
 
         name = (names.get(hash_) or {}).get("label") or "0x%08x" % hash_
         self._core_edit(edit, f"已添加 {name} = {val}")
@@ -953,33 +1164,42 @@ class AdvancedMixin:
         return maps[0].index if maps else -1
 
     def sup_set_rank(self, rank: str):
-        """Mark the selected support pair's <rank> conversation as seen."""
+        """Mark the <rank> conversation as seen for every selected pair."""
         sel = self.sup_tree.selection() if hasattr(self, "sup_tree") else ()
         rows = getattr(self, "_sup_pairs", {})
-        if not sel or sel[0] not in rows:
+        picked = [rows[i] for i in sel if i in rows]
+        if not picked:
             self.flash("请先在支援页选择一个支援对象。", "info")
             return
-        pair, fl = rows[sel[0]]
-        hash_ = (fl or {}).get(rank)
-        if not hash_:
-            self.flash(f"游戏数据中这对角色没有 {rank} 对话。", "error")
+        if not any((fl or {}).get(rank) for _p, fl in picked):
+            self.flash(("这对角色在游戏数据中没有" if len(picked) == 1 else "所选配对均没有")
+                       + f" {rank} 对话。", "error")
             return
         f = self.core_of()
-        maps = core.flag_maps(f)
-        have = any(x.hash == hash_ for m in maps for x in m.flags)
-        if have:
-            self.flash(f"已记录：{pair['a_en']} – {pair['b_en']}（{rank}）。")
+        have = {x.hash for m in core.flag_maps(f) for x in m.flags}
+        todo = [(pair, fl[rank]) for pair, fl in picked
+                if (fl or {}).get(rank) and fl[rank] not in have]
+        if not todo:
+            self.flash(f"已记录（{rank}）。")
             return
         target = self._map_for_prefix(f, "支援会話_")
+        hashes = [h for _p, h in todo]
 
         def edit(g):
-            ms = core.flag_maps(g)
-            m = next((x for x in ms if x.index == target), ms[0] if ms else None)
-            if m is None:
-                return None
-            return core.flag_add(g, m, hash_, 1)
+            for h in hashes:
+                ms = core.flag_maps(g)
+                m = next((x for x in ms if x.index == target), ms[0] if ms else None)
+                if m is None:
+                    return None
+                out = core.flag_add(g, m, h, 1)
+                if out is None:
+                    return None
+                g = core.SaveFile(out)
+            return g.payload
 
-        self._core_edit(edit, f"已记录支援对话：{pair['a_en']} – {pair['b_en']}（{rank}）")
+        pair = todo[0][0]
+        who = pair["b_en"] if len(todo) == 1 else f"{len(todo)} 名对象"
+        self._core_edit(edit, f"已记录支援对话：{pair['a_en']} – {who}（{rank}）")
         self.refresh_support_chars()
 
     def sup_forget_rank(self):
@@ -1022,8 +1242,54 @@ class AdvancedMixin:
         self.refresh_support_chars()
 
 
+    # ====================================================== support points
+    def sup_apply_points(self):
+        """Write the number in the points box onto the selected pair."""
+        raw = (self.sup_pt_var.get() or "").strip().replace(",", "").replace(" ", "")
+        if not raw.isdigit():
+            self.flash(f"请输入 0 到 {supports.max_points():,} 之间的支援点数。", "error")
+            return
+        self.sup_set_points(int(raw))
+
+    def sup_set_points(self, value: int):
+        """Set support points (the save's own value) on every selected pair."""
+        sel = self.sup_tree.selection() if hasattr(self, "sup_tree") else ()
+        pt = getattr(self, "_sup_pt", {})
+        rows = [i for i in sel if i in pt]
+        if not rows:
+            self.flash("请先在支援页选择一个支援对象。", "info")
+            return
+        value = max(0, min(int(value), supports.max_points()))
+        a_en = self.sup_name.cget("text")
+        todo = [(pt[i][0], self.sup_tree.item(i, "text")) for i in rows if pt[i][1] != value]
+        if not todo:
+            who = (self.sup_tree.item(rows[0], "text") if len(rows) == 1
+                   else f"全部 {len(rows)} 组")
+            self.flash(f"{a_en} – {who} 已经是 {value:,} 点。", "info")
+            return
+        hashes = [h for h, _n in todo]
+
+        def edit(g):
+            blk = g.block("GameUserData")
+            if not blk:
+                return None
+            table = supports.find_table(g.payload, blk.start, blk.end) or {}
+            changed = False
+            for h in hashes:
+                entry = table.get(h)
+                if entry is None or entry[0] == value:
+                    continue
+                supports.set_points(g.payload, entry[2], value)
+                changed = True
+            return g.payload if changed else None
+
+        who = todo[0][1] if len(todo) == 1 else f"{len(todo)} 组"
+        # _core_edit re-reads the save and refreshes every page, which rebuilds
+        # this one with the same character and partners still selected.
+        self._core_edit(edit, f"支援点数 {a_en} – {who} → {value:,}")
+
 def settings_offsets(f: core.SaveFile) -> list[int]:
-    """Offsets of the difficulty/mode byte pairs, everywhere the save keeps them."""
+    """Offsets of the (mode, difficulty) byte pairs, everywhere the save keeps them."""
     out = []
 
     def collect(start: int, length: int, depth: int):
@@ -1105,45 +1371,53 @@ def _slot_payload(app):
 
 
 # ---------------------------------------------------------------- undo/redo
-def push_undo(self):
-    """Snapshot the payload before an edit, so Ctrl+Z can take it back."""
+def _history_snapshot(slots):
+    return [(sv, bytes(sv.payload), getattr(sv, '_pending_story_chapter', None)) for sv in slots]
+
+
+def push_undo(self, slots=None):
+    """Snapshot every affected slot; story actions pass only the selected slot."""
     if not self.sv:
         return
-    stack = getattr(self, "_undo_stack", None)
-    if stack is None:
-        stack = self._undo_stack = []
-        self._redo_stack = []
-    stack.append(bytes(self.sv.payload))
-    del stack[:-60]
+    if getattr(self, '_history_slot', None) is not self.sv:
+        self._undo_stack, self._redo_stack = [], []
+        self._history_slot = self.sv
+    slots = list(self._targets() if slots is None else slots)
+    snapshot = _history_snapshot(slots)
+    self._undo_stack.append(snapshot)
+    del self._undo_stack[:-60]
     self._redo_stack.clear()
 
 
-def undo(self):
-    stack = getattr(self, "_undo_stack", None)
-    if not stack or not self.sv:
-        self.flash("没有可撤销的操作。", "info")
+def _restore_history(self, source, destination, message):
+    stack = getattr(self, source, None)
+    if not stack or not self.sv or getattr(self, '_history_slot', None) is not self.sv:
+        self.flash('没有可撤销的操作。' if source == '_undo_stack' else '没有可重做的操作。', 'info')
         return
-    self._redo_stack.append(bytes(self.sv.payload))
-    self.sv.payload = bytearray(stack.pop())
-    self.sv.scan()
-    self.sv._core_cache = None
-    self._touch([self.sv])
+    snapshot = stack[-1]
+    files = getattr(self, 'files', None)
+    if files is not None and any(files.get(sv.path) is not sv for sv, _, _ in snapshot):
+        self.flash('此编辑涉及的某个存档已被重新加载。历史已保留；请先重新打开原存档再撤销。', 'warn')
+        return
+    slots = [sv for sv, _, _ in snapshot]
+    getattr(self, destination).append(_history_snapshot(slots))
+    stack.pop()
+    for sv, payload, pending in snapshot:
+        sv.payload = bytearray(payload)
+        sv._pending_story_chapter = pending
+        sv.scan()
+        sv._core_cache = None
+    self._touch(slots)
     self.refresh_after_core()
-    self.flash("已撤销——按 Ctrl+Y 恢复。", "ok")
+    self.flash(message, 'ok')
+
+
+def undo(self):
+    _restore_history(self, '_undo_stack', '_redo_stack', '已撤销——按 Ctrl+Y 恢复。')
 
 
 def redo(self):
-    stack = getattr(self, "_redo_stack", None)
-    if not stack or not self.sv:
-        self.flash("没有可重做的操作。", "info")
-        return
-    self._undo_stack.append(bytes(self.sv.payload))
-    self.sv.payload = bytearray(stack.pop())
-    self.sv.scan()
-    self.sv._core_cache = None
-    self._touch([self.sv])
-    self.refresh_after_core()
-    self.flash("已重做。", "ok")
+    _restore_history(self, '_redo_stack', '_undo_stack', '已重做。')
 
 
 # --------------------------------------------------------------- snapshots
@@ -1267,7 +1541,6 @@ def add_skill(self, index: int):
     sid = self._picker(f"添加到「{layer.SKILL_LIST_NAMES[index]}」", rows)
     if sid is None:
         return
-    self.push_undo()
 
     def edit(g):
         u = layer.unit_in(g, self.uid)
@@ -1303,7 +1576,6 @@ def remove_skill(self, index: int):
             return None
         return core.with_skill_list(g, u, index + 1, [x for i, x in enumerate(ids) if i != k])
 
-    self.push_undo()
     self._core_edit(edit, f"{layer.SKILL_LIST_NAMES[index]}：已移除第 {k + 1} 项")
 
 
@@ -1405,7 +1677,6 @@ def assign_battalion(self, clear: bool = False):
             return
         legion = layer.battalions(self.sv.payload)[idx]
         legion = core.Legion(legion.row, g.unit_number if g else 0, legion.id)
-    self.push_undo()
 
     def edit(f):
         u = layer.unit_in(f, uid)
@@ -1426,7 +1697,6 @@ def remove_battalion(self):
     if kind != "battalion":
         self.flash("请先在资源池中选择一个兵团。", "info")
         return
-    self.push_undo()
     self._core_edit(lambda f: layer_del_battalion(f, idx), "已从资源池移除兵团")
 
 
@@ -1445,9 +1715,9 @@ def copy_unit_in(self):
     """Bring a unit over from another slot of the same folder."""
     import os
     from tkinter import filedialog
-    if not self.sv:
+    if not self._unit_entry_ready():
         return
-    others = [p for p in self.slot_paths if p != self.sv.path]
+    expected=(self.sv,bytes(self.sv.payload))
     start = self.folder or os.path.dirname(self.sv.path)
     # no filetypes: slot files have no extension and the macOS panel greys
     # out everything the glob patterns don't match
@@ -1465,10 +1735,19 @@ def copy_unit_in(self):
     uid = self._picker(f"从 {os.path.basename(pick)} 复制角色", rows)
     if uid is None:
         return
-    self.push_undo()
+    if self.sv is not expected[0] or bytes(self.sv.payload)!=expected[1]:
+        self.flash('目标存档已发生变化。请重新打开导入对话框。', 'warn');return
+    try:
+        import unit_entries
+        source=self.core_of(src)
+        unit=layer.unit_in(source,uid)
+        if unit is None:raise core.SaveError('No unique source unit.')
+    except core.SaveError as exc:self.flash(str(exc),'error');return
     name = next(r[1] for r in rows if r[0] == uid)
-    self._core_edit(lambda f: (layer.copy_unit_in(f.payload, pick, uid) and f.payload) or None,
-                    f"已导入 {name}")
+    if self._core_edit(lambda f: unit_entries.copy_in(source, unit, f),
+                       f"已导入 {name}（自动分配空闲编号）"):
+        self.uid = uid
+        self.show_unit()
 
 
 def remove_current_unit(self):
@@ -1483,7 +1762,6 @@ def remove_current_unit(self):
                       "游戏可能仍会引用该角色（加入标记、兵团、支援），这可能让游戏产生"
                       "混乱。可以用撤销（Ctrl+Z）恢复；保存之前不会写入磁盘。", parent=self):
         return
-    self.push_undo()
     self._core_edit(lambda f: (layer.remove_unit(f.payload, self.uid) and f.payload) or None,
                     f"已移除 {u.name}")
     self.uid = None
@@ -1501,9 +1779,66 @@ def add_convoy_item_ui(self):
     qty = _ask_number(self, "数量", "要添加多少个？", 1, 999)
     if not qty:
         return
-    self.push_undo()
+    conv = layer.live_convoy(bytes(self.sv.payload))
+    if conv is not None and not layer.stacks(iid):
+        # gear takes one slot per copy: say so up front if they won't fit
+        room = layer.convoy_free_gear_slots(bytes(self.sv.payload))
+        if room < qty:
+            self.flash(f"{layer.item_label(iid)} 不可堆叠——{qty} 件需要 {qty} 个槽位，"
+                       f"仓库只剩 {room} 个。", "warn")
+            return
+        if self._core_edit(
+                lambda f: (layer.add_convoy_copies(f.payload, iid, qty) and f.payload) or None,
+                f"仓库：已添加 {layer.item_label(iid)} ×{qty}（每件一槽）"):
+            self.refresh_convoy()
+            return
+    home = layer.convoy_home(iid, conv.slots) if conv else None
+    if home is None:
+        self.flash(f"{layer.item_label(iid)} 没有自己独立的仓库槽位。", "warn")
+        return
+    other = next((r for r in conv.rows if r.slot == home and r.qty and r.iid != iid), None)
+    if other:
+        self.flash(f"槽位 {home + 1} 是 {layer.item_label(iid)} 的专属槽位，现在放着 "
+                   f"{layer.item_label(other.iid)}——请先移除它。", "warn")
+        return
     self._core_edit(lambda f: (layer.add_convoy_slot(f.payload, iid, qty) and f.payload) or None,
                     f"仓库：已添加 {layer.item_label(iid)} ×{qty}")
+    self.refresh_convoy()
+
+
+def fill_materials_ui(self):
+    """Put every forging/cooking material in the convoy at one quantity."""
+    if not self.sv:
+        return
+    mats = layer.material_ids()
+    if not mats:
+        self.flash("道具列表中未找到材料。", "error")
+        return
+    try:
+        start = int(self.qty_var.get())
+    except (AttributeError, ValueError):
+        start = 99
+    qty = _ask_number(self, "所有材料",
+                      f"每种材料的数量（共 {len(mats)} 种：矿石、肉、鱼、\n"
+                      "植物、叶、粪）。每种材料放入自己的仓库槽位；\n"
+                      "已有的堆叠会被设为该数量。", max(1, start), 999)
+    if not qty:
+        return
+    got = {}
+
+    def run(f):
+        res = layer.fill_materials(f.payload, qty)
+        got.setdefault("r", res)
+        return f.payload if any(res[:3]) else None
+
+    if self._core_edit(run, f"Convoy: all materials ×{qty}"):
+        kept, added, moved, blocked = got.get("r", (0, 0, 0, 0))
+        msg = f"材料 ×{qty}：新增 {added} 种，设定 {kept} 种"
+        if moved:
+            msg += f"，{moved} 种已移入自己的槽位"
+        if blocked:
+            msg += f"——{blocked} 种跳过（其槽位放着其他道具）"
+        self.flash(msg + "——按 Ctrl+S 写入。", "warn" if blocked else "ok")
     self.refresh_convoy()
 
 
@@ -1512,7 +1847,6 @@ def remove_convoy_item_ui(self):
     if not slots:
         self.flash("请先选择一个仓库行。", "info")
         return
-    self.push_undo()
     for slot in sorted(slots, reverse=True):
         self._core_edit(
             lambda f, s=slot: (layer.remove_convoy_slot(f.payload, s) and f.payload) or None,
@@ -1525,5 +1859,6 @@ for _name in ("push_undo", "undo", "redo", "snapshot_root", "take_snapshot",
               "restore_snapshot", "_build_skill_tab", "refresh_skill_lists",
               "add_skill", "remove_skill", "_build_mounts", "refresh_mounts",
               "assign_battalion", "remove_battalion", "copy_unit_in",
-              "remove_current_unit", "add_convoy_item_ui", "remove_convoy_item_ui"):
+              "remove_current_unit", "add_convoy_item_ui", "remove_convoy_item_ui",
+              "fill_materials_ui"):
     setattr(AdvancedMixin, _name, globals()[_name])
