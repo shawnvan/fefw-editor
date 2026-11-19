@@ -18,30 +18,31 @@ library, or a ready-made Windows `.exe`.
 
 | Page | What |
 |---|---|
-| **Units** | Level, EXP, HP and stat gains; carried items; classes; arts and skills. Add a character from the catalogue, copy one from another save, remove one, restore recruitment, or change its **Unit #**, with duplicate checks. |
-| **Convoy** | Add, swap or remove items and materials (including Building Materials), change quantities, stock all materials, and repair damaged storage lists. |
+| **Units (单位)** | Level, EXP, HP and stat gains; carried items; classes; arts and skills. Add a character from the catalogue, copy one from another save, remove one, restore recruitment, or change its **Unit #**, with duplicate checks. |
+| **Convoy (道具袋)** | Add, swap or remove items and materials (including Building Materials), change quantities, stock all materials, and repair damaged storage lists. |
+| **Gold (金币)** | View and set the amount held in the selected save. |
 | **Player** | Gold, renown EXP and Karma Shards; difficulty, mode and playthrough number; Part 1/2 and Eshmel Part 3 chapter selection, optional chapter-start files, and **Troubleshoot Progress**. |
-| **Classes** | Current and learned classes, class EXP, weapon ranks and mastery EXP, with batch editing. |
-| **Supports** | Support points, current level and next-level requirements, and recorded conversations. |
+| **Classes (兵种)** | Current and learned classes, class EXP, skill levels and skill EXP, with batch editing. |
+| **Supports (支援情报)** | Support points, current level and next-level requirements, and recorded conversations. |
 | **Mounts** | The battalion and mount each unit carries, chosen from the save's pool. |
 | **World map** | Show or hide places and roads, and mark places visited. |
 | **Tutorials** | Make tutorial records available or remove them, with category, state and name-evidence filters. |
 | **Blessings** | Stored EXP for all seven gods and available first-audience controls. |
 | **Fast travel** | Add or remove identified Dagsion destinations. |
 | **Functions** | Facility and feature availability, area access, and city movement restrictions. |
-| **Notable Deeds** | Progress counters and milestone information, with claim states and rewards shown separately. |
-| **Boons** | Set tiers, remove ownership, switch owned Boons On/Off, or set all to maximum. |
-| **Flags** | Search and edit named save variables, including recruitment, conversations and unlocks. English names appear beside the original Japanese identifiers. |
+| **Notable Deeds (伟业录)** | Progress counters and milestone information, with claim states and rewards shown separately. |
+| **Boons (救世的祝福)** | Set tiers, remove ownership, switch owned Boons On/Off, or set all to maximum. |
+| **Flags (标记)** | Search and edit named save variables, including recruitment, conversations and unlocks. Chinese names are shown by default. Enable **英文名与原始键名** to see English names beside the exact original identifiers. Search accepts either language, the original key or the hash. |
 
 Edits support **Undo/Redo** (Ctrl+Z / Ctrl+Y). **Snapshot** / **Restore…** keep
 copies of the whole save folder. Frequently used save data is cached to keep
 switching pages and editing large lists responsive. The window sizes to fit your
 screen; longer forms and previews scroll, action buttons stay visible, and
-**Go to tab** reaches every page when the tab strip is too wide.
+**切换页签** reaches every page when the tab strip is too wide.
 
 ### Story progression
 
-Chapter selection is available from **Player → Story progression…**:
+Chapter selection is available from **玩家 → 剧情进度（实验功能）→ 选择剧情进度…**:
 
 | Story | Available chapters |
 |---|---|
@@ -61,15 +62,15 @@ Complete playthroughs and every Obelisk checkpoint have not been validated.
 Chapter selection preserves your party and earlier progress; it does not grant
 all skipped units, facilities or quests. Known access fixes are applied where
 needed, including Part 2 temple and midtown access. Theodora Part 1 Chapter 6
-may still require the alternate route around the city barrier. **Troubleshoot
-Progress** reads the current character, part and chapter and offers a known
+may still require the alternate route around the city barrier. **排查进度卡点…**
+reads the current character, part and chapter and offers a known
 repair where one exists. If none is known, it points to the upstream issue page.
 
-**Try Part 2 entry…** offers experimental entry from a supported Part 1 save.
+**尝试进入战争篇…** offers experimental entry from a supported Part 1 save.
 It does not reproduce the whole native transition or create the separate
 `Part_<lord>_2` handoff file. Part 3 selection does not create missing route
-completion or carryover state. Story changes and troubleshooting apply only to
-the selected save, even when mirroring is enabled.
+completion or carryover state. Turn off mirroring to apply story changes or
+repairs to the selected save.
 
 You can optionally create the selected chapter's checkpoint file when saving.
 Existing files require confirmation and receive a backup. Battle states are

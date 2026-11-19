@@ -35,15 +35,15 @@ ANCHORS = frozenset(core.id_hash(key) for key in (
 MIN_ANCHORS = 2
 
 
-def apply_labels(names: dict[int, dict]) -> None:
+def apply_labels(names: dict[int, dict], *, localized: bool = False) -> None:
     for god, key in KEYS.items():
         if names.get(HASHES[god], {}).get("name", key) != key:
             raise AudienceError(f"Conflicting audience identity for {HASHES[god]:08x}")
     for god, key in KEYS.items():
         h = HASHES[god]
+        name = blessings.BY_HASH[god].name
         names[h] = {**names.get(h, {}), "name": key, "kind": "audience",
-                    "label": f"初谒：{CHARACTERS.get(blessings.BY_HASH[god].name,
-                                                   blessings.BY_HASH[god].name)}"}
+                    "label": f"初谒：{CHARACTERS.get(name, name)}" if localized else f"First audience: {name}"}
 
 
 def locate(f: core.SaveFile) -> core.FlagMap:

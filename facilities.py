@@ -70,17 +70,19 @@ def label_zh(row) -> str:
     return FACILITIES.get(row['label'], row['label'])
 
 
-def apply_labels(names):
+def apply_labels(names, *, localized=False):
     updates = {}
     for h, row in catalog().items():
         key = row['name']
         if names.get(h, {}).get('name', key) != key:
             raise FacilityError(f'Conflicting facility identity for {h:08x}')
-        prefix = ('移动受限：' if h in MOVEMENT else
-                  '已禁用：' if row['polarity'] == 'restriction' else
-                  '已登记：' if row['kind'] == 'Gate registration' else
-                  '功能解锁：' if row['kind'] in ('Journal', 'Area access') else '设施解锁：')
-        updates[h] = {**names.get(h, {}), 'name': key, 'label': prefix + label_zh(row), 'kind': 'facility'}
+        en, zh = (('Movement restricted: ', '移动受限：') if h in MOVEMENT else
+                  ('Disabled: ', '已禁用：') if row['polarity'] == 'restriction' else
+                  ('Registered: ', '已登记：') if row['kind'] == 'Gate registration' else
+                  ('Function unlocked: ', '功能解锁：') if row['kind'] in ('Journal', 'Area access') else
+                  ('Facility unlocked: ', '设施解锁：'))
+        label = zh + label_zh(row) if localized else en + row['label']
+        updates[h] = {**names.get(h, {}), 'name': key, 'label': label, 'kind': 'facility'}
     names.update(updates)
 
 

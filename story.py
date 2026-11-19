@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import struct
 
 import fefw_core as core
+from zh_names import CHARACTERS
 
 CHAPTERS = tuple(range(1, 13))
 LEDA_PREFIX = 0xfde8dadc5dfc1118
@@ -17,10 +18,25 @@ PREFIXES = {4: LEDA_PREFIX, 1: CAI_PREFIX, 2: DIETRICH_PREFIX, 3: THEODORA_PREFI
 FILE_CODES = {4: 'Led', 1: 'Kai', 2: 'Dit', 3: 'Seo'}
 FILE_CODES[9] = 'Ism'
 ROUTES = {1: 'Cai', 2: 'Dietrich', 3: 'Theodora', 4: 'Leda', 9: 'Eshmel'}
+PART_NAMES = {2: '战争篇', 3: '救世篇'}
 
 
 class StoryError(core.SaveError):
     pass
+
+
+def route_name(route: int) -> str:
+    name = ROUTES.get(route)
+    return CHARACTERS.get(name, name) if name else f'未知路线 {route}'
+
+
+def part_name(part: int) -> str:
+    name = PART_NAMES.get(part)
+    return f'第{part}部 {name}' if name else f'第{part}部'
+
+
+def chapter_name(part: int, chapter: int) -> str:
+    return f'第{chapter}区分' if part == 3 else f'第{chapter}章'
 
 
 # Shared Timeline_Part2 (戦争篇); target IDs captured/tested on Cai. Reuse for
@@ -33,25 +49,25 @@ PART3_CHAPTERS = tuple(range(1, 7))
 
 def sequence(chapter, route=4, part=1):
     if type(part) is not int or part not in (1, 2, 3):
-        raise StoryError('Unsupported story part.')
+        raise StoryError('不支持此剧情部数。')
     if part == 3:
         if type(route) is not int or route != 9 or type(chapter) is not int or chapter not in PART3_CHAPTERS:
-            raise StoryError('Part 3 chapter editing is only available for Eshmel, chapters 1–6.')
+            raise StoryError('第3部救世篇仅支持伊修玛尔的第1至6区分。')
         value = PART3_PREFIX
         for byte in f'{chapter}_1'.encode('ascii'):
             value = ((value * 0x100000001b3) & 0xffffffffffffffff) ^ byte
         return value
     if part == 2:
         if type(route) is not int or route not in PREFIXES or type(chapter) is not int or chapter not in PART2_CHAPTERS:
-            raise StoryError('Provisional Part 2 editing supports the four main routes, chapters 1–6 only.')
+            raise StoryError('战争篇暂定支持四条主角路线的第1至6章。')
         value = PART2_PREFIX
         for byte in f'{chapter}_1'.encode('ascii'):
             value = ((value * 0x100000001b3) & 0xffffffffffffffff) ^ byte
         return value
     if type(chapter) is not int or chapter not in CHAPTERS:
-        raise StoryError('Choose a Part 1 chapter from 1 to 12.')
+        raise StoryError('请选择第1部的第1至12章。')
     if type(route) is not int or route not in PREFIXES:
-        raise StoryError('Story editing supports Leda, Cai, Dietrich and Theodora Part 1 only.')
+        raise StoryError('第1部剧情进度仅支持蕾达、凯伊、迪托利希和赛奥朵拉的路线。')
     value = PREFIXES[route]
     for byte in f'{chapter}_1'.encode('ascii'):
         value = ((value * 0x100000001b3) & 0xffffffffffffffff) ^ byte
@@ -81,7 +97,7 @@ class Progress:
 
     @property
     def label(self):
-        return f'{ROUTES.get(self.route, "Unknown route " + str(self.route))} · Part {self.part} · Chapter {self.chapter}'
+        return f'{route_name(self.route)} · {part_name(self.part)} · {chapter_name(self.part, self.chapter)}'
 
 
 def read(f):
@@ -89,15 +105,15 @@ def read(f):
     headers = [b for b in f.blocks if b.name == 'Header']
     users = [b for b in f.blocks if b.name == 'GameUserData']
     if len(headers) != 1 or len(users) != 1:
-        raise StoryError('Cannot identify one live Header and GameUserData.')
+        raise StoryError('无法唯一识别当前存档的 Header 和 GameUserData 数据块。')
     h, u = headers[0], users[0]
     ud = u.start + 4
     if h.end - h.start != 220 or f.payload[h.start + 8] != 15 or core.user_data(f) != ud:
-        raise StoryError('Unknown story field layout; no changes allowed.')
+        raise StoryError('无法识别剧情字段结构，无法编辑。')
     try:
         tree = f.tree()
     except RecursionError as exc:
-        raise StoryError('Unsupported story object tree; no changes allowed.') from exc
+        raise StoryError('不支持此存档的剧情数据结构，无法编辑。') from exc
     parent = tree.node_at(u.start)
     children = [n for n in tree.nodes if n.parent == parent]
     # In GameUserData v23 the current sequence is a 16-byte child object at
@@ -107,24 +123,24 @@ def read(f):
     if (len(sequence_nodes) != 1 or sequence_nodes[0].struct
             or sequence_nodes[0].end != ud + 92 or f.payload[ud + 80] != 0
             or min(n.start for n in children) != ud + 76):
-        raise StoryError('Unknown live story-sequence object; no changes allowed.')
+        raise StoryError('无法识别当前剧情节点的数据结构，无法编辑。')
     header_route = tuple(f.payload[h.start + 12:h.start + 15])
     user_route = tuple(f.payload[ud + 3:ud + 6])
     if header_route != user_route:
-        raise StoryError('Header and live route/part/chapter disagree; no changes allowed.')
+        raise StoryError('存档头与当前的路线、部数或章节不一致，无法编辑。')
     a = struct.unpack_from('<Q', f.payload, h.start + 45)[0]
     b = struct.unpack_from('<Q', f.payload, ud + 81)[0]
     if a == 0 or a != b:
-        raise StoryError('Header and live story sequences are missing or disagree.')
+        raise StoryError('存档头和当前剧情节点缺失或不一致。')
     return Progress(*user_route, a, h.start, ud)
 
 
 def require_leda(f):
     info = read(f)
     if (info.route, info.part) != (4, 1):
-        raise StoryError(f'{info.label}. Story editing is only available for Leda Part 1 saves.')
+        raise StoryError(f'{info.label}。此操作仅支持蕾达第1部存档。')
     if info.chapter not in CHAPTERS:
-        raise StoryError('This Leda Part 1 chapter is outside the supported range (1–12).')
+        raise StoryError('当前章节超出蕾达第1部支持的第1至12章范围。')
     return info
 
 
@@ -135,7 +151,7 @@ def require_supported(f):
     if info.route in PREFIXES and info.part == 2 and info.chapter in PART2_CHAPTERS:
         return info
     if info.route not in PREFIXES or info.part != 1 or info.chapter not in CHAPTERS:
-        raise StoryError(f'{info.label}. Story editing supports the four Part 1/2 routes and Eshmel Part 3 chapters 1–6.')
+        raise StoryError(f'{info.label}。支持四位主角的第1、2部，以及伊修玛尔救世篇的第1至6区分。')
     return info
 
 
@@ -149,21 +165,21 @@ def check_outer(raw, info, *, allow_part_change=False):
                        and raw[40] == info.route and info.route in PREFIXES
                        and raw[41] in (1, 2) and info.part in (1, 2))
     if len(raw) < 81 or raw[36] != 15 or (tuple(raw[40:42]) != (info.route, info.part) and not eligible_change):
-        raise StoryError('The outer save summary disagrees with the live route/part.')
+        raise StoryError('存档摘要中的路线或部数与当前进度不一致。')
 
 
 def edited(f, chapter, *, route=4):
     info = require_supported(f)
     target = sequence(chapter, route, info.part)
     if info.route != route:
-        raise StoryError('The requested story route does not match the save; route conversion is not supported.')
+        raise StoryError('所选剧情路线与存档不一致，无法切换路线。')
     p = bytearray(f.payload)
     p[info.header + 14] = p[info.user + 5] = chapter
     for at in (info.header + 45, info.user + 81):
         struct.pack_into('<Q', p, at, target)
     check = require_supported(core.SaveFile(p))
     if (check.chapter, check.sequence) != (chapter, target):
-        raise StoryError('The chapter edit did not validate.')
+        raise StoryError('章节修改未通过校验。')
     return p
 
 

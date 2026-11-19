@@ -73,7 +73,7 @@ def catalog() -> list[dict]:
             raise ValueError("empty catalogue")
         return groups
     except (OSError, ValueError, KeyError, TypeError) as exc:
-        raise BoonError(f"Cannot load boon_catalog.json: {exc}") from exc
+        raise BoonError(f"无法加载救世的祝福目录 boon_catalog.json：{exc}") from exc
 
 
 def read_observation(f: core.SaveFile) -> dict:
@@ -81,10 +81,10 @@ def read_observation(f: core.SaveFile) -> dict:
     try:
         values = audiences.read(f)
     except core.SaveError as exc:
-        raise BoonError("Shared map cannot be identified uniquely; Boon observation unavailable.") from exc
+        raise BoonError("无法唯一识别共享标记表，无法读取救世的祝福。") from exc
     user = core.user_data(f)
     if user < 0:
-        raise BoonError("Player resource header is not recognised; observation unavailable.")
+        raise BoonError("无法识别玩家资源数据，无法读取救世的祝福。")
     return {"karma_shards": f.u32(user + core.KARMA_AT),
             "exp_candidate": values.get(EXP_CANDIDATE),
             "exp_disabled": values.get(EXP_DISABLED),
@@ -164,13 +164,22 @@ def edited_weapons_active(f: core.SaveFile, active: bool) -> bytearray:
 
 def matching_rows(query: str = "") -> list[tuple[str, dict, dict]]:
     query = query.strip().casefold()
-    return [(f"{i}:{tier['tier']}", group, tier)
-            for i, group in enumerate(catalog()) for tier in group["tiers"]
-            if not query or query in f"{group['label']} {group['name']} {group.get('game_label', '')}".casefold()]
+    rows = []
+    for i, group in enumerate(catalog()):
+        names = f"{localized_name(group)} {display_name(group)} {group['label']} {group['name']}"
+        if query and query not in names.casefold():
+            continue
+        rows.extend((f"{i}:{tier['tier']}", group, tier) for tier in group["tiers"])
+    return rows
 
 
 def display_name(group: dict) -> str:
+    """English name used by the Flags catalogue."""
     return group.get('game_label') or group['label']
+
+
+def localized_name(group: dict) -> str:
+    return group.get('zh') or display_name(group)
 
 
 def group_keys(name: str) -> tuple[int, int]:
@@ -191,7 +200,7 @@ def evidence_label(name: str, tier: int) -> str:
     return 'Inferred'
 
 
-def apply_labels(names: dict[int, dict]) -> None:
+def apply_labels(names: dict[int, dict], *, localized: bool = False) -> None:
     """Name all known tier/disable records without inventing the Off prefix."""
     updates = {}
     for group in catalog():
@@ -205,12 +214,13 @@ def apply_labels(names: dict[int, dict]) -> None:
         off_key = names.get(disabled, {}).get('name', '')
         if off_key and core.id_hash(off_key) != disabled:
             raise BoonError(f'Conflicting Boon disable identity for {disabled:08x}')
-        for h, original, label in (
-                (level, key, 'Boon tier: ' + display_name(group)),
-                (disabled, off_key, 'Boon disabled: ' + display_name(group))):
+        title = localized_name(group) if localized else display_name(group)
+        for h, original, prefix in (
+                (level, key, '祝福等级：' if localized else 'Boon tier: '),
+                (disabled, off_key, '祝福停用标记：' if localized else 'Boon disabled: ')):
             if h in updates:
                 raise BoonError('Ambiguous Boon label identities.')
-            updates[h] = {**names.get(h, {}), 'name': original, 'label': label, 'kind': 'boon'}
+            updates[h] = {**names.get(h, {}), 'name': original, 'label': prefix + title, 'kind': 'boon'}
     names.update(updates)
 
 
@@ -223,30 +233,32 @@ def read_state(f: core.SaveFile) -> dict:
         name = group['name']
         level, disabled = group_keys(name)
         if level == disabled or level in seen or disabled in seen:
-            raise BoonError('Ambiguous Boon key mapping; editing is disabled.')
+            raise BoonError('祝福标记的对应关系不唯一，无法编辑。')
         seen.update((level, disabled))
         groups[name] = {'level': values.get(level), 'disabled': values.get(disabled)}
     return {'karma_shards': observation['karma_shards'], 'groups': groups}
 
 
-def group_edit_reason(group: dict, state: dict) -> str:
+def group_edit_reason(group: dict, state: dict, *, zh: bool = False) -> str:
     level, disabled = state['level'], state['disabled']
     if level is not None and (type(level) is not int or not 0 <= level <= len(group['tiers'])):
-        return f'Unknown stored tier ({level}); preserved.'
+        return f'存档中的等级未知（{level}），已保留。' if zh else f'Unknown stored tier ({level}); preserved.'
     if disabled is not None and (type(disabled) is not int or disabled != 1):
-        return f'Unknown On/Off value ({disabled}); preserved.'
+        return f'启用状态未知（{disabled}），已保留。' if zh else f'Unknown On/Off value ({disabled}); preserved.'
     return ''
 
 
-def row_state(group: dict, tier: dict, state: dict) -> str:
+def row_state(group: dict, tier: dict, state: dict, *, zh: bool = False) -> str:
     if group_edit_reason(group, state):
-        return 'Unknown / read-only'
+        return '未知／只读' if zh else 'Unknown / read-only'
     level = state['level'] or 0
     if tier['tier'] > level:
-        return 'Not owned'
+        return '未解锁' if zh else 'Not owned'
     if tier['tier'] < level:
-        return f'Below tier {level}'
-    return 'Off' if state['disabled'] == 1 else 'On'
+        return f'低于已解锁的第 {level} 级' if zh else f'Below tier {level}'
+    if state['disabled'] == 1:
+        return '已停用' if zh else 'Off'
+    return '已启用' if zh else 'On'
 
 
 def edited_groups(f: core.SaveFile, *, levels: dict | None = None,
@@ -261,28 +273,28 @@ def edited_groups(f: core.SaveFile, *, levels: dict | None = None,
     levels = {} if levels is None else levels
     active = {} if active is None else active
     if not isinstance(levels, dict) or not isinstance(active, dict):
-        raise BoonError('Boon edits must identify catalogue groups.')
+        raise BoonError('只能编辑目录中已识别的祝福。')
     groups = {g['name']: g for g in catalog()}
     for name, value in levels.items():
         if name not in groups or type(value) is not int or not 0 <= value <= len(groups[name]['tiers']):
-            raise BoonError('Choose a listed tier, or remove ownership.')
+            raise BoonError('请选择列表中的等级，或移除祝福。')
     for name, value in active.items():
         if name not in groups or type(value) is not bool:
-            raise BoonError('Choose On or Off for a catalogue Boon.')
+            raise BoonError('请选择目录中的祝福，再设为启用或停用。')
     observed = read_state(f)['groups']
     requested = {}
     for name in levels.keys() | active.keys():
         state = observed[name]
-        reason = group_edit_reason(groups[name], state)
+        reason = group_edit_reason(groups[name], state, zh=True)
         if reason:
-            raise BoonError(f'{display_name(groups[name])}: {reason}')
+            raise BoonError(f'{localized_name(groups[name])}：{reason}')
         level_hash, disabled_hash = group_keys(name)
         level = levels.get(name, state['level'] or 0)
         if name in levels and level != (state['level'] or 0):
             requested[level_hash] = level or None
         if name in active:
             if level == 0:
-                raise BoonError('Set an owned tier before switching a Boon On or Off.')
+                raise BoonError('请先解锁一个等级，再启用或停用祝福。')
             requested[disabled_hash] = None if active[name] else 1
     fm = audiences.locate(f)
     present = {fl.hash: fl.value for fl in fm.flags}
@@ -305,7 +317,7 @@ def edited_groups(f: core.SaveFile, *, levels: dict | None = None,
         if h not in present and effective[h] is not None:
             records.append(struct.pack('<IB', h, effective[h]))
     if len(records) > 65535:
-        raise BoonError('The shared flag map is full.')
+        raise BoonError('共享标记表已满。')
     body = bytes([f.payload[fm.start + 4]]) + struct.pack('<H', len(records)) + b''.join(records)
     return core.replace_content(f, fm.start, body)
 

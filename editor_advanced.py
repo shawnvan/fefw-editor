@@ -34,51 +34,25 @@ from unit_entry_page import UnitEntryPageMixin
 import audiences
 import facilities
 import tutorials
+import flag_display
 import flag_labels
 from ui_util import enable_multi_select
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 APP_NAME = "Fortune's Weave Save Editor"
 
-# the 13 weapon masteries, in the order the save stores them
+# The 13 skill EXP fields in save order. Display terms follow System.msbt.
 MASTERIES = [
-    ("剑", "剣"), ("枪", "槍"), ("斧", "斧"), ("弓", "弓"),
-    ("格斗", "格闘"), ("黑魔法", "黒魔"), ("白魔法", "白魔"),
-    ("特殊", "特殊"), ("步兵", "歩兵"), ("骑马", "騎馬"),
-    ("重装", "重装"), ("飞行", "飛行"), ("指挥", "指揮"),
+    ("剑术", "剣術"), ("枪术", "槍術"), ("斧术", "斧術"), ("箭术", "弓術"),
+    ("格斗术", "格闘術"), ("黑魔术", "黒魔術"), ("白魔术", "白魔術"),
+    ("特殊", "特殊"), ("步兵术", "歩兵術"), ("马术", "馬術"),
+    ("重装术", "重装術"), ("飞行术", "飛行術"), ("指挥术", "指揮術"),
 ]
 RANKS = ["E", "E+", "D", "D+", "C", "C+", "B", "B+", "A", "A+", "S", "S+"]
 from fefw_save import SKILL_THRESHOLDS as RANK_EXP  # noqa: E402  (one table for both tabs)
 DIFFICULTIES = ["普通", "困难", "疯狂"]
-MODES = ["休闲", "经典"]
-
-# what the Japanese name prefixes mean (the part after them is a game-internal
-# name; there is no Chinese table for those, so it stays as the game writes it)
-PREFIX_ZH = [
-    ("面識_", "已会面"),
-    ("加入_", "已加入"),
-    ("支援会話_", "支援对话"),
-    ("実績_", "成就"),
-    ("機能開放_", "功能解锁"),
-    ("兵種解放_", "职业解锁"),
-    ("禁止_", "禁用"),
-    ("因果報酬_", "因果报酬"),
-    ("状況_", "状况"),
-    ("環境設定_", "设置"),
-    ("既読_", "已读"),
-    ("共有_", "共享"),
-    ("チュートリアル_", "教程"),
-    ("ファストトラベル_", "快速传送"),
-    ("会話_", "对话"),
-]
-
-
-def friendly(name: str) -> str:
-    for prefix, zh in PREFIX_ZH:
-        if name.startswith(prefix):
-            rest = name[len(prefix):]
-            return f"{zh} · {rest}" if rest else zh
-    return name
+MODES = ["轻松模式", "经典模式"]
+PLAYER_RESOURCES = {"gold": "金币", "renown": "名声值", "karma": "因果碎片"}
 
 _JOBS = None
 _FLAG_NAMES = None
@@ -117,6 +91,21 @@ def flag_names() -> dict:
     return _FLAG_NAMES
 
 
+def flag_english_mode(app) -> bool:
+    setting = getattr(app, "flag_english", None)
+    return setting is None or setting.get()
+
+
+def flag_display_name(h: int, meta: dict | None, english: bool, zh: str | None = None) -> str:
+    key = meta["name"] if meta else ""
+    if english:
+        label = meta.get("label") if meta else ""
+        return label if label and label != key else f"unknown 0x{h:08x}"
+    if zh is None:
+        zh = flag_display.chinese_label(h, meta)
+    return zh or flag_display.unknown_label(h, key)
+
+
 def class_label(cid: int) -> str:
     from fefw_save import job_name
     return job_name(cid & 0xFFFFFFFF)
@@ -142,7 +131,7 @@ def matching_flag_map(source, target, map_i):
     """Resolve a mirrored flag list by its member hash, never by scan order."""
     selected = next((m for m in core.flag_maps(source) if m.index == map_i), None)
     if selected is None:
-        raise core.SaveError('The selected flag list no longer exists.')
+        raise core.SaveError('所选标记列表已不存在。')
     if source.payload == target.payload:
         return selected
     tree, group, _ = facilities.flag_group(source)
@@ -150,7 +139,7 @@ def matching_flag_map(source, target, map_i):
     keys = [source.u32(table+8*i) for i in range(source.u32(node.start) >> 24)
             if source.ptr(table+8*i+4) == selected.start]
     if len(keys) != 1:
-        raise core.SaveError('This flag list has no established identity for mirroring. Edit it with mirroring off.')
+        raise core.SaveError('无法识别所选标记列表在其他存档中的位置，请关闭同路线镜像后编辑。')
     return facilities.locate_member(target, keys[0])
 
 
@@ -230,7 +219,8 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         self.refresh_boons()
 
     # -------------------------------------------------------- pick a value
-    def _picker(self, title: str, rows, current: int | None = None):
+    def _picker(self, title: str, rows, current: int | None = None, *,
+                search_terms=None, secondary_title="内部编号"):
         """Modal searchable single-choice list. rows: [(key, primary, secondary)]."""
         win = tk.Toplevel(self)
         win.title(title)
@@ -243,7 +233,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         ent.pack(fill="x")
         tree = ttk.Treeview(win, columns=("sec",), show="tree headings", selectmode="browse")
         tree.heading("#0", text='名称', anchor="w")
-        tree.heading("sec", text='内部编号', anchor="w")
+        tree.heading("sec", text=secondary_title, anchor="w")
         tree.column("#0", width=300)
         tree.column("sec", width=210)
         sb = ttk.Scrollbar(win, orient="vertical", command=tree.yview)
@@ -259,7 +249,8 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
             iids.clear()
             n = 0
             for key, primary, secondary in rows:
-                if q and q not in str(primary).lower() and q not in str(secondary).lower():
+                if (q and q not in str(primary).lower() and q not in str(secondary).lower()
+                        and (search_terms is None or q not in search_terms[key])):
                     continue
                 iid = tree.insert("", "end", text=primary, values=(secondary,))
                 iids[iid] = key
@@ -301,10 +292,9 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         self.player_vars: dict[str, tk.StringVar] = {}
         grid = ttk.Frame(card, style="Card.TFrame")
         grid.pack(fill="x")
-        rows = [("gold", "金钱", 9_999_999), ("renown", "声望经验", 999_999),
-                ("karma", "因果碎片", 999_999)]
-        for i, (key, label, limit) in enumerate(rows):
-            ttk.Label(grid, text=label, style="Card.TLabel", width=16).grid(
+        rows = [("gold", 9_999_999), ("renown", 999_999), ("karma", 999_999)]
+        for i, (key, limit) in enumerate(rows):
+            ttk.Label(grid, text=PLAYER_RESOURCES[key], style="Card.TLabel", width=16).grid(
                 row=i, column=0, sticky="w", pady=4)
             var = tk.StringVar()
             self.player_vars[key] = var
@@ -379,7 +369,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
                 line += " · 槽位不一致 —— " + " · ".join(bits)
             self.play_lbl.configure(text=line)
         self.player_note.configure(
-            text="声望经验是全军的累计值；等级本身由游戏自己的 Reward.bin 表决定，"
+            text="名声值是全军的累计值；等级本身由游戏自己的 Reward.bin 表决定，"
                  "把数值设在两级之间即可停在想要的等级上。")
 
     def apply_player(self, key: str, limit: int):
@@ -406,7 +396,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
             core.set_u32(g, base + off, value)
             return g.payload
 
-        self._core_edit(edit, f"{key.title()} → {value:,}")
+        self._core_edit(edit, f"{PLAYER_RESOURCES[key]} → {value:,}")
 
     def apply_settings(self):
         if not self.sv or not hasattr(self, "diff_var"):
@@ -460,7 +450,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         pane.add(side, weight=0)
         head = ttk.Frame(side, style="Card.TFrame")
         head.pack(fill="x")
-        ttk.Label(head, text='角色', style="CardH3.TLabel").pack(side="left")
+        ttk.Label(head, text='单位', style="CardH3.TLabel").pack(side="left")
         self.cls_count = ttk.Label(head, text="", style="CardMuted.TLabel")
         self.cls_count.pack(side="right")
         self.cls_search = ttk.Entry(side)
@@ -469,7 +459,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         self.cls_unit_tree = ttk.Treeview(side, columns=("lv",), show="tree headings",
                                           selectmode="browse", height=20)
         self.cls_unit_tree.heading("#0", text='名称', anchor="w")
-        self.cls_unit_tree.heading("lv", text='等级', anchor="e")
+        self.cls_unit_tree.heading("lv", text='LV', anchor="e")
         self.cls_unit_tree.column("#0", width=170)
         self.cls_unit_tree.column("lv", width=40, anchor="e", stretch=False)
         sb = ttk.Scrollbar(side, orient="vertical", command=self.cls_unit_tree.yview)
@@ -483,14 +473,14 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
 
         head = ttk.Frame(main, style="Card.TFrame", padding=(16, 12))
         head.pack(fill="x", padx=(10, 0))
-        self.cls_name = ttk.Label(head, text='未选择角色', style="CardH1.TLabel")
+        self.cls_name = ttk.Label(head, text='未选择单位', style="CardH1.TLabel")
         self.cls_name.pack(anchor="w")
         self.cls_sub = ttk.Label(head, text="", style="CardMuted.TLabel")
         self.cls_sub.pack(anchor="w", pady=(2, 0))
 
         cur = ttk.Frame(main, style="Card.TFrame", padding=(16, 10))
         cur.pack(fill="x", padx=(10, 0), pady=(8, 0))
-        ttk.Label(cur, text='当前职业', style="Card.TLabel", width=13).pack(side="left")
+        ttk.Label(cur, text='当前兵种', style="Card.TLabel", width=13).pack(side="left")
         self.cur_class_lbl = ttk.Label(cur, text="—", style="CardH3.TLabel")
         self.cur_class_lbl.pack(side="left")
         self.cur_class_jp = ttk.Label(cur, text="", style="CardFaint.TLabel")
@@ -505,16 +495,16 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         body.add(cbox, weight=3)
         bar = ttk.Frame(cbox, style="Card.TFrame")
         bar.pack(fill="x")
-        ttk.Label(bar, text='角色拥有的职业', style="CardH3.TLabel").pack(side="left")
-        for text, cmd in (("设置经验…", self.set_class_exp), ("添加…", self.add_class),
+        ttk.Label(bar, text='单位拥有的兵种', style="CardH3.TLabel").pack(side="left")
+        for text, cmd in (("设置兵种EXP…", self.set_class_exp), ("添加…", self.add_class),
                           ("替换…", self.swap_class), ("移除", self.remove_class),
                           ("设为当前", self.set_current_class)):
             ttk.Button(bar, text=text, style="Small.TButton", command=cmd).pack(side="right",
                                                                                padx=(6, 0))
         self.cls_tree = ttk.Treeview(cbox, columns=("value", "flags", "now"),
                                      show="tree headings", selectmode="extended")
-        self.cls_tree.heading("#0", text='职业', anchor="w")
-        self.cls_tree.heading("value", text='职业经验', anchor="e")
+        self.cls_tree.heading("#0", text='兵种', anchor="w")
+        self.cls_tree.heading("value", text='兵种EXP', anchor="e")
         self.cls_tree.heading("flags", text='标记', anchor="e")
         self.cls_tree.heading("now", text="", anchor="center")
         self.cls_tree.column("#0", width=300)
@@ -532,19 +522,19 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         body.add(mbox, weight=3)
         bar2 = ttk.Frame(mbox, style="Card.TFrame")
         bar2.pack(fill="x")
-        ttk.Label(bar2, text='武器熟练度', style="CardH3.TLabel").pack(side="left")
+        ttk.Label(bar2, text='技能', style="CardH3.TLabel").pack(side="left")
         self.mas_sel_lbl = ttk.Label(bar2, text="", style="CardMuted.TLabel")
         self.mas_sel_lbl.pack(side="left", padx=(10, 0))
-        for text, cmd in (("设置等级…", self.set_mastery_rank), ("设置经验…", self.set_mastery_exp),
+        for text, cmd in (("设置技能LV…", self.set_mastery_rank), ("设置技能EXP…", self.set_mastery_exp),
                           ("添加…", self.add_mastery), ("移除", self.remove_mastery)):
             ttk.Button(bar2, text=text, style="Small.TButton", command=cmd).pack(side="right",
                                                                                padx=(6, 0))
         self.mas_tree = ttk.Treeview(mbox, columns=("rank", "exp", "next"),
                                      show="tree headings", selectmode="extended")
-        self.mas_tree.heading("#0", text='武器', anchor="w")
-        self.mas_tree.heading("rank", text='等级', anchor="center")
-        self.mas_tree.heading("exp", text='经验', anchor="e")
-        self.mas_tree.heading("next", text='下一级所需', anchor="e")
+        self.mas_tree.heading("#0", text='技能', anchor="w")
+        self.mas_tree.heading("rank", text='技能LV', anchor="center")
+        self.mas_tree.heading("exp", text='技能EXP', anchor="e")
+        self.mas_tree.heading("next", text='下级EXP阈值', anchor="e")
         self.mas_tree.column("#0", width=220)
         self.mas_tree.column("rank", width=60, anchor="center", stretch=False)
         self.mas_tree.column("exp", width=70, anchor="e", stretch=False)
@@ -560,7 +550,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         note = ttk.Frame(main, style="Card.TFrame")
         note.pack(fill="x", padx=(10, 0), pady=(6, 0))
         ttk.Label(note, style="CardFaint.TLabel", justify="left", wraplength=900,
-                  text="职业和熟练度是角色记录内的两个独立列表；添加条目会增大记录，其后"
+                  text="兵种和技能是单位记录内的两个独立列表；添加条目会增大记录，其后"
                        "所有指针都会被重写（这是旧版编辑器做不到的）。等级阈值来自游戏："
                        "E 0 · E+ 20 · D 35 · D+ 80 · C 220 · C+ 440 · B 690 · B+ 910 "
                        "· A 1215 · A+ 1510 · S 1960 · S+ 2560。"
@@ -609,7 +599,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
                 first = iid
             if keep is not None and u.start == keep:
                 first = iid
-        self.cls_count.configure(text=f"{len(self._cls_rows)} 名角色")
+        self.cls_count.configure(text=f"{len(self._cls_rows)} 个单位")
         if first:
             self.cls_unit_tree.selection_set(first)
             self.cls_unit_tree.see(first)
@@ -630,13 +620,13 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         self.cls_tree.delete(*self.cls_tree.get_children())
         self.mas_tree.delete(*self.mas_tree.get_children())
         if u is None or f is None:
-            self.cls_name.configure(text='未选择角色')
+            self.cls_name.configure(text='未选择单位')
             self.cur_class_lbl.configure(text="—")
             return
         self._cls_uid = u.start
         self.cls_name.configure(text=unit_name(u.person))
-        self.cls_sub.configure(text=f"Lv {f.payload[u.level_off]} · {len(u.classes)} 个职业"
-                                    f" · {len(u.masteries)} 项熟练度")
+        self.cls_sub.configure(text=f"LV {f.payload[u.level_off]} · {len(u.classes)} 个兵种"
+                                    f" · {len(u.masteries)} 项技能")
         cid = u.klass
         cur = class_label(cid)
         jp = class_jp(cid)
@@ -653,7 +643,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
             nxt = RANK_EXP[r + 1] if r + 1 < len(RANK_EXP) else None
             nm = MASTERIES[idx][0] if 0 <= idx < len(MASTERIES) else f"#{idx}"
             self.mas_tree.insert("", "end", text=nm,
-                                 values=(RANKS[r], exp, nxt if nxt is not None else "max"),
+                                 values=(RANKS[r], exp, nxt if nxt is not None else "已满级"),
                                  iid=str(i))
             if keep_uid == u.start and idx in keep:
                 kept.append(str(i))
@@ -668,19 +658,23 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         self._on_mastery_select()
 
     # -- class actions
-    def _class_rows(self):
+    def _pick_class(self, title, *, current=None, exclude=()):
         rows = []
+        search_terms = {}
         for cid, meta in jobs().items():
-            rows.append((cid, meta.get("en") or meta.get("jp") or "unknown",
-                         meta.get("jp", "")))
+            if cid in exclude:
+                continue
+            rows.append((cid, class_label(cid), meta.get("jp", "")))
+            search_terms[cid] = (meta.get("en") or "").lower()
         rows.sort(key=lambda r: r[1].lower())
-        return rows
+        return self._picker(title, rows, current, search_terms=search_terms,
+                            secondary_title="原始兵种键名")
 
     def change_current_class(self):
         u = self._cls_unit()
         if u is None:
             return
-        cid = self._picker("选择角色当前职业", self._class_rows(), u.klass)
+        cid = self._pick_class("选择单位当前兵种", current=u.klass)
         if cid is None:
             return
         self._set_current(u, cid)
@@ -708,7 +702,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
             core.set_class(g, v, cid)
             return g.payload
 
-        self._core_edit(edit, f"当前职业 → {class_label(cid)}")
+        self._core_edit(edit, f"当前兵种 → {class_label(cid)}")
 
     def _class_entries(self) -> list[int]:
         """Selected class rows (entry index), in list order."""
@@ -721,13 +715,13 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         u = self._cls_unit()
         entries = self._class_entries()
         if u is None or not entries:
-            self.flash("请先选择职业行。", "info")
+            self.flash("请先选择兵种行。", "info")
             return
         cur = u.classes[entries[0]][1] if len(entries) == 1 else 0
         many = len(entries) > 1
-        prompt = ("所选职业的职业经验（0 – 255）：" if many
-                  else "该职业保存的职业经验（0 – 255）：")
-        val = _ask_number(self, "职业经验", prompt, cur, 255)
+        prompt = ("所选兵种的EXP（0 – 255）：" if many
+                  else "该兵种保存的兵种EXP（0 – 255）：")
+        val = _ask_number(self, "兵种EXP", prompt, cur, 255)
         if val is None:
             return
 
@@ -745,8 +739,8 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
                 return None
             return core.with_lists(g, v, v.masteries, classes)
 
-        what = (f"{class_label(u.classes[entries[0]][0])}职业经验 → {val}" if not many
-                else f"{len(entries)} 个职业的经验 → {val}")
+        what = (f"{class_label(u.classes[entries[0]][0])}兵种EXP → {val}" if not many
+                else f"{len(entries)} 个兵种的EXP → {val}")
         self._core_edit(edit, what)
 
     def add_class(self):
@@ -754,8 +748,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         if u is None:
             return
         have = {c[0] for c in u.classes}
-        rows = [r for r in self._class_rows() if r[0] not in have]
-        cid = self._picker("添加职业", rows)
+        cid = self._pick_class("添加兵种", exclude=have)
         if cid is None:
             return
 
@@ -765,7 +758,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
                 return None
             return core.with_lists(g, v, v.masteries, list(v.classes) + [(cid, 0, 4)])
 
-        self._core_edit(edit, f"已添加职业 {class_label(cid)}")
+        self._core_edit(edit, f"已添加兵种 {class_label(cid)}")
 
     def swap_class(self):
         u = self._cls_unit()
@@ -775,8 +768,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         entry = int(sel[0])
         old = u.classes[entry]
         have = {c[0] for c in u.classes}
-        rows = [r for r in self._class_rows() if r[0] not in have]
-        cid = self._picker(f"将 {class_label(old[0])} 替换为…", rows)
+        cid = self._pick_class(f"将 {class_label(old[0])} 替换为…", exclude=have)
         if cid is None:
             return
 
@@ -794,7 +786,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
                 core.set_class(g, w, cid)
             return g.payload
 
-        self._core_edit(edit, f"职业 {class_label(old[0])} → {class_label(cid)}")
+        self._core_edit(edit, f"兵种 {class_label(old[0])} → {class_label(cid)}")
 
     def remove_class(self):
         u = self._cls_unit()
@@ -802,7 +794,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         if u is None or not entries:
             return
         if any(u.classes[i][0] == u.klass for i in entries):
-            messagebox.showinfo("存档编辑器", "其中包含该角色的当前职业。请先更改当前职业，"
+            messagebox.showinfo("存档编辑器", "其中包含该单位的当前兵种。请先更改当前兵种，"
                                                "或使用“替换”。", parent=self)
             entries = [i for i in entries if u.classes[i][0] != u.klass]
             if not entries:
@@ -816,8 +808,8 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
             classes = [c for i, c in enumerate(v.classes) if i not in set(entries)]
             return core.with_lists(g, v, v.masteries, classes)
 
-        what = (f"已移除职业 {names[0]}" if len(names) == 1
-                else f"已移除 {len(names)} 个职业")
+        what = (f"已移除兵种 {names[0]}" if len(names) == 1
+                else f"已移除 {len(names)} 个兵种")
         self._core_edit(edit, what)
 
     # -- mastery actions
@@ -842,7 +834,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
             return
         n = len(self._mastery_entries())
         self.mas_sel_lbl.configure(
-            text=f"已选择 {n} 项：设置等级 / 设置经验 / 移除 会同时作用于这 {n} 项" if n > 1 else "")
+            text=f"已选择 {n} 项。设置技能LV、技能EXP或移除会应用到全部所选项。" if n > 1 else "")
 
     @staticmethod
     def _short_list(names, limit: int = 4) -> str:
@@ -853,15 +845,15 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         u = self._cls_unit()
         entries = self._mastery_entries()
         if u is None or not entries:
-            self.flash("请先选择武器熟练度行。", "info")
+            self.flash("请先选择一项技能。", "info")
             return
         names = self._mastery_names(u, entries)
-        rows = [(i, RANKS[i], f"{RANK_EXP[i]} 经验") for i in range(len(RANKS))]
+        rows = [(i, RANKS[i], f"{RANK_EXP[i]} EXP") for i in range(len(RANKS))]
         if len(entries) == 1:
-            title = f"{names[0]}的等级"
+            title = f"{names[0]}的技能LV"
             current = rank_of(u.masteries[entries[0]][1])
         else:
-            title = f"{len(entries)} 项熟练度的等级（{self._short_list(names)}）"
+            title = f"{len(entries)} 项技能的LV（{self._short_list(names)}）"
             current = None
         r = self._picker(title, rows, current)
         if r is None:
@@ -884,22 +876,22 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
             return core.with_lists(g, v, mas, list(v.classes))
 
         what = (f"{names[0]} → {RANKS[r]}" if len(entries) == 1
-                else f"{len(entries)} 项熟练度 → {RANKS[r]}")
+                else f"{len(entries)} 项技能 → {RANKS[r]}")
         self._core_edit(edit, what)
 
     def set_mastery_exp(self):
         u = self._cls_unit()
         entries = self._mastery_entries()
         if u is None or not entries:
-            self.flash("请先选择武器熟练度行。", "info")
+            self.flash("请先选择一项技能。", "info")
             return
         names = self._mastery_names(u, entries)
         cur = u.masteries[entries[0]][1] if len(entries) == 1 else 0
         if len(entries) == 1:
-            prompt = f"{names[0]}的经验值（0 – 65535）："
+            prompt = f"{names[0]}的技能EXP（0 – 65535）："
         else:
-            prompt = f"{len(entries)} 项熟练度（{self._short_list(names)}）的经验值（0 – 65535）："
-        val = _ask_number(self, "熟练度经验", prompt, cur, 65535)
+            prompt = f"{len(entries)} 项技能（{self._short_list(names)}）的EXP（0 – 65535）："
+        val = _ask_number(self, "技能EXP", prompt, cur, 65535)
         if val is None:
             return
         self._remember_masteries(u, entries)
@@ -919,9 +911,9 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
             return core.with_lists(g, v, mas, list(v.classes))
 
         if len(entries) == 1:
-            what = f"{names[0]}经验 → {val}"
+            what = f"{names[0]} EXP → {val}"
         else:
-            what = f"{len(entries)} 项熟练度的经验 → {val}"
+            what = f"{len(entries)} 项技能的EXP → {val}"
         self._core_edit(edit, what)
 
     def add_mastery(self):
@@ -932,9 +924,9 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         rows = [(i, MASTERIES[i][0], MASTERIES[i][1]) for i in range(len(MASTERIES))
                 if i not in have]
         if not rows:
-            self.flash("该角色已拥有全部武器熟练度。", "info")
+            self.flash("该单位已拥有全部技能。", "info")
             return
-        idx = self._picker("添加武器熟练度", rows)
+        idx = self._picker("添加技能", rows)
         if idx is None:
             return
         self._mas_keep = (u.start, {idx})
@@ -946,17 +938,17 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
             mas = sorted(list(v.masteries) + [(idx, 0)])
             return core.with_lists(g, v, mas, list(v.classes))
 
-        self._core_edit(edit, f"已添加熟练度 {MASTERIES[idx][0]}")
+        self._core_edit(edit, f"已添加技能 {MASTERIES[idx][0]}")
 
     def remove_mastery(self):
         u = self._cls_unit()
         entries = self._mastery_entries()
         if u is None or not entries:
-            self.flash("请先选择武器熟练度行。", "info")
+            self.flash("请先选择一项技能。", "info")
             return
         names = self._mastery_names(u, entries)
-        what_q = (f"{names[0]}熟练度" if len(entries) == 1
-                  else f"{len(entries)} 项熟练度（{self._short_list(names, 6)}）")
+        what_q = (f"{names[0]}" if len(entries) == 1
+                  else f"{len(entries)} 项技能（{self._short_list(names, 6)}）")
         if not messagebox.askyesno("存档编辑器",
                                    f"移除 {unit_name(u.person)} 的{what_q}？",
                                    parent=self):
@@ -973,8 +965,8 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
                 return None
             return core.with_lists(g, v, mas, list(v.classes))
 
-        what = (f"已移除熟练度 {names[0]}" if len(entries) == 1
-                else f"已移除 {len(entries)} 项熟练度")
+        what = (f"已移除技能 {names[0]}" if len(entries) == 1
+                else f"已移除 {len(entries)} 项技能")
         self._core_edit(edit, what)
 
     # ============================================================== FLAGS
@@ -998,17 +990,19 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         self.flag_search.bind("<KeyRelease>", lambda e: self.refresh_flags())
         quick = ttk.Frame(top, style="Card.TFrame")
         quick.pack(fill="x")
-        for text, prefix in (("全部", ""), ("支援", "支援会話_"), ("已加入", "加入_"),
-                             ("已会面", "面識_"), ("成就", "実績_"), ("教程", "TUTO_"),
-                             ("扩展职业", "兵種解放_")):
+        for text, prefixes in (("全部", ()), ("支援", ("支援会話_",)), ("已加入", ("加入_",)),
+                               ("已会面", ("面識_",)), ("伟业录", ("実績_", "実績状態_")),
+                               ("教程", ("TUTO_",)), ("兵种解锁", ("兵種解放_", "共有_兵種解放_"))):
             ttk.Button(quick, text=text, style="Small.TButton",
-                       command=lambda p=prefix: self.set_flag_filter(p)).pack(side="left",
-                                                                              padx=(0, 6))
-        self.flag_filter = ""
+                       command=lambda p=prefixes, t=text: self.set_flag_filter(p, t)).pack(side="left", padx=(0, 6))
+        self.flag_filter = ()
+        self.flag_filter_label = ""
+        self.flag_english = tk.BooleanVar(master=self, value=False)
+        ttk.Checkbutton(quick, text="英文名与原始键名", variable=self.flag_english,
+                        command=self._update_flag_columns).pack(side="right")
         self.flag_tree = scrolled_tree(page, columns=("label", "value", "map"),
                                        show="tree headings", selectmode="browse")
-        self.flag_tree.heading("#0", text='名称', anchor="w")
-        self.flag_tree.heading("label", text='显示为', anchor="w")
+        self.flag_tree.heading("label", text='原始键名', anchor="w")
         self.flag_tree.heading("value", text='数值', anchor="e")
         self.flag_tree.heading("map", text='列表', anchor="e")
         self.flag_tree.column("#0", width=260)
@@ -1017,14 +1011,21 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         self.flag_tree.column("map", width=60, anchor="e", stretch=False)
         self.flag_tree.container.pack(fill="both", expand=True, pady=(8, 0))
         ttk.Label(page, style="CardFaint.TLabel", justify="left", wraplength=980,
-                  text="标记是游戏的命名变量：支援会話_<A>_<B>_<等级> 表示一段支援对话已观看，"
-                       "加入_ 表示已加入的角色，面識_ 表示已会面，実績_ 是成就计数。"
-                       "数据文件中没有名字的标记显示为它的哈希值——那是一个真实的标记，"
-                       "只是编辑器叫不出名字。"
+                  text="可按中文名、英文名、原始键名或哈希搜索。勾选「英文名与原始键名」可查看存档键。"
+                       "中文名尚待核对或原始键尚未识别的标记，可用哈希定位。"
                   ).pack(anchor="w", pady=(8, 0))
+        self._update_flag_columns(refresh=False)
 
-    def set_flag_filter(self, prefix: str):
-        self.flag_filter = prefix
+    def _update_flag_columns(self, refresh=True):
+        english = flag_english_mode(self)
+        self.flag_tree.heading("#0", text="英文名称" if english else "中文名称", anchor="w")
+        self.flag_tree.configure(displaycolumns=("label", "value", "map") if english else ("value", "map"))
+        if refresh:
+            self.refresh_flags()
+
+    def set_flag_filter(self, prefixes: tuple[str, ...], label: str):
+        self.flag_filter = prefixes
+        self.flag_filter_label = label if prefixes else ""
         self.refresh_flags()
 
     def refresh_flags(self):
@@ -1034,7 +1035,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         self.flag_tree.delete(*self.flag_tree.get_children())
         self._flag_rows = {}
         if not f:
-            self.flag_count.configure(text="")
+            self.flag_count.configure(text="打开存档后可查看标记。")
             return
         names = flag_names()
         q = ""
@@ -1044,6 +1045,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
             pass
         shown = 0
         total = 0
+        english = flag_english_mode(self)
         for m in core.flag_maps(f):
             for fl in m.flags:
                 total += 1
@@ -1053,20 +1055,20 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
                 if self.flag_filter:
                     if not name.startswith(self.flag_filter):
                         continue
+                zh = flag_display.chinese_label(fl.hash, meta) if q or not english else ""
+                text = flag_display_name(fl.hash, meta, english, zh)
                 if q:
-                    hay = (name + " " + (label or "") + " %08x" % fl.hash).lower()
+                    hay = f"{name} {label or ''} {zh} {text} 0x{fl.hash:08x}".lower()
                     if q not in hay:
                         continue
-                text = label or (friendly(name) if name else
-                                 ("unknown 0x%08x" % fl.hash))
-                sec = name if (name and name != text) else ""
                 iid = self.flag_tree.insert("", "end", text=text,
-                                            values=(sec, fl.value, m.index),
-                                            tags=("flag_unknown",) if not meta else ())
+                                            values=(name, fl.value, m.index),
+                                            tags=("flag_unknown",) if not meta or (not english and not zh) else ())
                 self._flag_rows[iid] = (m.index, fl.hash)
                 shown += 1
+        filter_label = getattr(self, "flag_filter_label", "")
         self.flag_count.configure(text=f"共 {total:,} 项，显示 {shown:,} 项"
-                                       + (f" · {self.flag_filter}*" if self.flag_filter else ""))
+                                       + (f" · {filter_label}" if filter_label else ""))
         p = self.p
         self.flag_tree.tag_configure("flag_unknown", foreground=p["muted"])
 
@@ -1100,7 +1102,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
             if any(fl.hash == hash_ for fl in fm.flags):
                 return core.flag_set(f, fm, hash_, value)
             return core.flag_add(f, fm, hash_, value)
-        name = (flag_names().get(hash_) or {}).get('label') or '0x%08x' % hash_
+        name = flag_display_name(hash_, flag_names().get(hash_), flag_english_mode(self))
         self._core_edit(edit, f'{name} = {value}')
 
     def remove_flag(self):
@@ -1108,7 +1110,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         if not key:
             return
         map_i, hash_ = key
-        name = (flag_names().get(hash_) or {}).get("label") or "0x%08x" % hash_
+        name = flag_display_name(hash_, flag_names().get(hash_), flag_english_mode(self))
         if not messagebox.askyesno("存档编辑器", f"移除标记 {name}？", parent=self):
             return
 
@@ -1122,9 +1124,21 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
 
     def add_flag(self):
         names = flag_names()
-        rows = [(h, v.get("label") or v["name"], v["name"]) for h, v in names.items()]
-        rows.sort(key=lambda r: str(r[1]).lower())
-        hash_ = self._picker("添加标记", rows)
+        english = flag_english_mode(self)
+        rows = []
+        titled = set()
+        search_terms = {}
+        for h, meta in names.items():
+            zh = flag_display.chinese_label(h, meta)
+            name = flag_display_name(h, meta, english, zh)
+            key = meta["name"]
+            if (english and meta.get("label") not in (None, "", key)) or (not english and zh):
+                titled.add(h)
+            rows.append((h, name, key if english else f"0x{h:08x}"))
+            search_terms[h] = f"{zh} {meta.get('label', '')} {key} 0x{h:08x}".lower()
+        rows.sort(key=lambda row: (row[0] not in titled, row[1].lower()))
+        hash_ = self._picker("添加标记", rows, search_terms=search_terms,
+                             secondary_title="原始键名" if english else "哈希")
         if hash_ is None:
             return
         val = _ask_number(self, "标记数值", "要保存的数值（0 – 254，更大的值也可以）：",
@@ -1145,7 +1159,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
                 return core.flag_set(g, m, hash_, val)
             return core.flag_add(g, m, hash_, val)
 
-        name = (names.get(hash_) or {}).get("label") or "0x%08x" % hash_
+        name = flag_display_name(hash_, names.get(hash_), english)
         self._core_edit(edit, f"已添加 {name} = {val}")
 
     # ====================================================== support unlock
@@ -1172,7 +1186,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
             self.flash("请先在支援页选择一个支援对象。", "info")
             return
         if not any((fl or {}).get(rank) for _p, fl in picked):
-            self.flash(("这对角色在游戏数据中没有" if len(picked) == 1 else "所选配对均没有")
+            self.flash(("这对单位在游戏数据中没有" if len(picked) == 1 else "所选配对均没有")
                        + f" {rank} 对话。", "error")
             return
         f = self.core_of()
@@ -1211,7 +1225,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         pair, fl = rows[sel[0]]
         ranks = [(r, r, "") for r in ("C", "B", "A") if fl.get(r)]
         if not ranks:
-            self.flash("游戏数据中这对角色没有任何对话。", "error")
+            self.flash("游戏数据中这对单位没有任何对话。", "error")
             return
         rank = self._picker("要清除哪段对话？", ranks)
         if rank:
@@ -1247,7 +1261,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         """Write the number in the points box onto the selected pair."""
         raw = (self.sup_pt_var.get() or "").strip().replace(",", "").replace(" ", "")
         if not raw.isdigit():
-            self.flash(f"请输入 0 到 {supports.max_points():,} 之间的支援点数。", "error")
+            self.flash(f"请输入 0 到 {supports.max_points():,} 之间的支援值。", "error")
             return
         self.sup_set_points(int(raw))
 
@@ -1286,7 +1300,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         who = todo[0][1] if len(todo) == 1 else f"{len(todo)} 组"
         # _core_edit re-reads the save and refreshes every page, which rebuilds
         # this one with the same character and partners still selected.
-        self._core_edit(edit, f"支援点数 {a_en} – {who} → {value:,}")
+        self._core_edit(edit, f"支援值 {a_en} – {who} → {value:,}")
 
 def settings_offsets(f: core.SaveFile) -> list[int]:
     """Offsets of the (mode, difficulty) byte pairs, everywhere the save keeps them."""
@@ -1475,7 +1489,7 @@ def restore_snapshot(self):
 def _build_skill_tab(self):
     """The record's skill lists (all six), each with add / remove."""
     tab = ttk.Frame(self.unit_tabs, style="Card.TFrame", padding=16)
-    self.unit_tabs.add(tab, text='战技与技能')
+    self.unit_tabs.add(tab, text='战技与特技')
     grid = ttk.Frame(tab, style="Card.TFrame")
     grid.pack(fill="both", expand=True)
     self._skill_trees = {}
@@ -1487,15 +1501,15 @@ def _build_skill_tab(self):
         head = ttk.Frame(box, style="Card.TFrame")
         head.pack(fill="x")
         ttk.Label(head, text=name, style="CardH3.TLabel").pack(side="left")
-        for text, fn in (("Remove", lambda i=idx: self.remove_skill(i)),
-                         ("Add…", lambda i=idx: self.add_skill(i))):
+        for text, fn in (("移除", lambda i=idx: self.remove_skill(i)),
+                         ("添加…", lambda i=idx: self.add_skill(i))):
             ttk.Button(head, text=text, style="Small.TButton", width=7,
                        command=fn).pack(side="right", padx=(4, 0))
         tree = scrolled_tree(box, show="tree", selectmode="browse", height=5)
         tree.container.pack(fill="both", expand=True, pady=(4, 0))
         self._skill_trees[idx] = tree
     ttk.Label(tab, style="CardFaint.TLabel", justify="left", wraplength=820,
-              text="“装备战技 / 装备技能”是角色带上战场的内容；“已学会（全部）”是学过的"
+              text="「装备战技／装备特技」是单位带上战场的内容；「已习得（全部）」是学过的"
                    "一切。添加或删除条目都会安全地重写列表。"
               ).pack(anchor="w", pady=(8, 0))
 
@@ -1523,22 +1537,25 @@ def add_skill(self, index: int):
     # table translation; a Japanese-only label is kanji too, so "contains a
     # Han character" is not proof of a translation — the table must hit
     rows = []
-    for h, m in layer._skills().items():
+    skills = layer._skills()
+    for h, m in skills.items():
         jp = m.get("jp") or ""
         if (m.get("sid") or "").startswith("SID_>") or "[" in jp \
                 or jp.startswith(("[e]", "SC", "エフェクト", "イベント", "SID_", ">")):
             continue
-        if not ((m.get("en") or "").strip() or layer._skill_zh(jp)):
+        if not ((m.get("en") or "").strip() or chinese_name("skills", h) or layer._skill_zh(jp)):
             continue
-        rows.append((h, layer.skill_label(h),
-                     " ".join(filter(None, (m.get("en"), jp, m.get("sid"))))))
+        rows.append((h, layer.skill_label(h), jp))
     # skills with an English name first; internal / enemy-only entries after
-    eng = {h for h, m in layer._skills().items() if m.get("en")}
+    eng = {h for h, m in skills.items() if m.get("en")}
     rows.sort(key=lambda r: (r[0] not in eng, str(r[1]).lower()))
     if not rows:
-        self.flash("没有可用的技能名称（缺少 skill_ids.json）。", "warn")
+        self.flash("没有可用的战技或特技名称。", "warn")
         return
-    sid = self._picker(f"添加到「{layer.SKILL_LIST_NAMES[index]}」", rows)
+    search = {h: f"{skills[h].get('en', '')} {skills[h].get('sid', '')} {h:08x}".lower()
+              for h, _, _ in rows}
+    sid = self._picker(f"添加到「{layer.SKILL_LIST_NAMES[index]}」", rows,
+                       search_terms=search, secondary_title="日文原名")
     if sid is None:
         return
 
@@ -1585,15 +1602,15 @@ def _build_mounts(self):
     pane.pack(fill="both", expand=True)
     left = ttk.Frame(pane, style="Card.TFrame", padding=12)
     pane.add(left, weight=3)
-    ttk.Label(left, text='兵团与坐骑', style="CardH3.TLabel").pack(anchor="w")
+    ttk.Label(left, text='军团兵与坐骑', style="CardH3.TLabel").pack(anchor="w")
     ttk.Label(left, style="CardMuted.TLabel", wraplength=520, justify="left",
-              text="每个角色在记录末尾携带一个兵团（骑乘职业还有一匹坐骑）。"
+              text="每个单位在记录末尾携带一个军团兵（骑乘兵种还有一匹坐骑）。"
                    "从本存档持有的资源池中选择。").pack(
         anchor="w", pady=(2, 8))
     self.mount_tree = scrolled_tree(left, columns=("bat", "mount"), show="tree headings",
                                     selectmode="browse")
-    self.mount_tree.heading("#0", text='角色', anchor="w")
-    self.mount_tree.heading("bat", text='兵团', anchor="w")
+    self.mount_tree.heading("#0", text='单位', anchor="w")
+    self.mount_tree.heading("bat", text='军团兵', anchor="w")
     self.mount_tree.heading("mount", text='坐骑', anchor="w")
     self.mount_tree.column("#0", width=190)
     self.mount_tree.column("bat", width=230)
@@ -1614,9 +1631,9 @@ def _build_mounts(self):
     self.pool_tree.container.pack(fill="both", expand=True, pady=(6, 6))
     row = ttk.Frame(right, style="Card.TFrame")
     row.pack(fill="x")
-    ttk.Button(row, text='分配给角色', style="Small.TButton",
+    ttk.Button(row, text='分配给单位', style="Small.TButton",
                command=self.assign_battalion).pack(side="left")
-    ttk.Button(row, text='清除角色装备', style="Small.TButton",
+    ttk.Button(row, text='清除单位装备', style="Small.TButton",
                command=lambda: self.assign_battalion(clear=True)).pack(side="left", padx=(6, 0))
     ttk.Button(row, text='从资源池移除', style="Small.TButton",
                command=self.remove_battalion).pack(side="left", padx=(6, 0))
@@ -1636,13 +1653,13 @@ def refresh_mounts(self):
     for u in layer.find_units(self.sv.payload):
         g = layer.unit_gear(self.sv.payload, u.uid)
         bat = bat_by_unit.get((g.unit_number if g else -1))
-        bat_txt = (f"兵团 第 {bat.row} 行") if bat else "—"
+        bat_txt = (f"军团兵 第 {bat.row} 行") if bat else "—"
         mnt = (f"坐骑 #{g.ride.serial}") if (g and g.ride) else "—"
         iid = self.mount_tree.insert("", "end", text=u.name,
                                      values=(bat_txt, mnt))
         self._mount_rows[iid] = u.uid
     for i, l in enumerate(layer.battalions(self.sv.payload)):
-        iid = self.pool_tree.insert("", "end", text=f"#{i + 1}", values=("兵团", hex(l.id)),
+        iid = self.pool_tree.insert("", "end", text=f"#{i + 1}", values=("军团兵", hex(l.id)),
                                     iid="b%d" % i)
         self._pool_rows[iid] = ("battalion", i)
     for i, r in enumerate(layer.mounts(self.sv.payload)):
@@ -1655,13 +1672,13 @@ def assign_battalion(self, clear: bool = False):
     sel = self.mount_tree.selection() if hasattr(self, "mount_tree") else ()
     uid = getattr(self, "_mount_rows", {}).get(sel[0] if sel else None)
     if uid is None or not self.sv:
-        self.flash("请先在坐骑页选择一个角色。", "info")
+        self.flash("请先在坐骑页选择一个单位。", "info")
         return
     legion = None
     ride = None
     g = layer.unit_gear(self.sv.payload, uid)
     if g is None:
-        self.flash("该角色的记录没有兵团栏位（角色实际参战时游戏才会写入）"
+        self.flash("该单位的记录没有军团兵栏位（单位实际参战时游戏才会写入）"
                    "——没有可写的内容。", "warn")
         return
     if g.ride:
@@ -1669,11 +1686,11 @@ def assign_battalion(self, clear: bool = False):
     if not clear:
         psel = self.pool_tree.selection()
         if not psel:
-            self.flash("请先在资源池中选择一个兵团。", "info")
+            self.flash("请先在资源池中选择一个军团兵。", "info")
             return
         kind, idx = self._pool_rows.get(psel[0], (None, None))
         if kind != "battalion":
-            self.flash("这里只能分配兵团。", "warn")
+            self.flash("这里只能分配军团兵。", "warn")
             return
         legion = layer.battalions(self.sv.payload)[idx]
         legion = core.Legion(legion.row, g.unit_number if g else 0, legion.id)
@@ -1685,8 +1702,8 @@ def assign_battalion(self, clear: bool = False):
             return None
         return core.with_gear(f, u, gg, ride, legion)
 
-    self._core_edit(edit, "已清除兵团" if clear
-                    else (f"兵团 → 第 {legion.row} 行"))
+    self._core_edit(edit, "已清除军团兵" if clear
+                    else (f"军团兵 → 第 {legion.row} 行"))
 
 
 def remove_battalion(self):
@@ -1695,9 +1712,9 @@ def remove_battalion(self):
         return
     kind, idx = self._pool_rows.get(psel[0], (None, None))
     if kind != "battalion":
-        self.flash("请先在资源池中选择一个兵团。", "info")
+        self.flash("请先在资源池中选择一个军团兵。", "info")
         return
-    self._core_edit(lambda f: layer_del_battalion(f, idx), "已从资源池移除兵团")
+    self._core_edit(lambda f: layer_del_battalion(f, idx), "已从资源池移除军团兵")
 
 
 def layer_del_battalion(f, idx: int):
@@ -1722,7 +1739,7 @@ def copy_unit_in(self):
     # no filetypes: slot files have no extension and the macOS panel greys
     # out everything the glob patterns don't match
     pick = filedialog.askopenfilename(
-        parent=self, initialdir=start, title="从哪个存档复制角色？")
+        parent=self, initialdir=start, title="从哪个存档复制单位？")
     if not pick:
         return
     try:
@@ -1730,9 +1747,9 @@ def copy_unit_in(self):
     except Exception as exc:                  # noqa: BLE001
         self.flash(f"无法读取 {os.path.basename(pick)}：{exc}", "error")
         return
-    rows = [(u.uid, u.name, f"Lv {u.level} · {u.job}") for u in src.units]
+    rows = [(u.uid, u.name, f"LV {u.level} · {u.job}") for u in src.units]
     rows.sort(key=lambda r: r[1].lower())
-    uid = self._picker(f"从 {os.path.basename(pick)} 复制角色", rows)
+    uid = self._picker(f"从 {os.path.basename(pick)} 复制单位", rows)
     if uid is None:
         return
     if self.sv is not expected[0] or bytes(self.sv.payload)!=expected[1]:
@@ -1759,7 +1776,7 @@ def remove_current_unit(self):
         return
     if not messagebox.askyesno(
             APP_NAME, f"从存档中移除 {u.name}？\n\n"
-                      "游戏可能仍会引用该角色（加入标记、兵团、支援），这可能让游戏产生"
+                      "游戏可能仍会引用该单位（加入标记、军团兵、支援），这可能让游戏产生"
                       "混乱。可以用撤销（Ctrl+Z）恢复；保存之前不会写入磁盘。", parent=self):
         return
     self._core_edit(lambda f: (layer.remove_unit(f.payload, self.uid) and f.payload) or None,
@@ -1771,9 +1788,16 @@ def remove_current_unit(self):
 def add_convoy_item_ui(self):
     if not self.sv:
         return
-    rows = [(h, layer.item_label(h, m), m.get("jp", "")) for h, m in layer.item_ids().items()]
-    rows.sort(key=lambda r: str(r[1]).lower())
-    iid = self._picker("添加到仓库", rows)
+    rows, internal_rows = [], []
+    search_terms = {}
+    show_internal = self.show_internal.get()
+    for iid, _, label, jp, _, _, internal, blob in self.item_rows:
+        if internal and not show_internal:
+            continue
+        (internal_rows if internal else rows).append((iid, label, jp))
+        search_terms[iid] = blob
+    iid = self._picker("添加到道具袋", rows + internal_rows, search_terms=search_terms,
+                       secondary_title="日文／内部键名")
     if iid is None:
         return
     qty = _ask_number(self, "数量", "要添加多少个？", 1, 999)
@@ -1785,16 +1809,16 @@ def add_convoy_item_ui(self):
         room = layer.convoy_free_gear_slots(bytes(self.sv.payload))
         if room < qty:
             self.flash(f"{layer.item_label(iid)} 不可堆叠——{qty} 件需要 {qty} 个槽位，"
-                       f"仓库只剩 {room} 个。", "warn")
+                       f"道具袋只剩 {room} 个。", "warn")
             return
         if self._core_edit(
                 lambda f: (layer.add_convoy_copies(f.payload, iid, qty) and f.payload) or None,
-                f"仓库：已添加 {layer.item_label(iid)} ×{qty}（每件一槽）"):
+                f"道具袋：已添加 {layer.item_label(iid)} ×{qty}（每件一槽）"):
             self.refresh_convoy()
             return
     home = layer.convoy_home(iid, conv.slots) if conv else None
     if home is None:
-        self.flash(f"{layer.item_label(iid)} 没有自己独立的仓库槽位。", "warn")
+        self.flash(f"{layer.item_label(iid)} 没有自己独立的道具袋槽位。", "warn")
         return
     other = next((r for r in conv.rows if r.slot == home and r.qty and r.iid != iid), None)
     if other:
@@ -1802,7 +1826,7 @@ def add_convoy_item_ui(self):
                    f"{layer.item_label(other.iid)}——请先移除它。", "warn")
         return
     self._core_edit(lambda f: (layer.add_convoy_slot(f.payload, iid, qty) and f.payload) or None,
-                    f"仓库：已添加 {layer.item_label(iid)} ×{qty}")
+                    f"道具袋：已添加 {layer.item_label(iid)} ×{qty}")
     self.refresh_convoy()
 
 
@@ -1820,7 +1844,7 @@ def fill_materials_ui(self):
         start = 99
     qty = _ask_number(self, "所有材料",
                       f"每种材料的数量（共 {len(mats)} 种：矿石、肉、鱼、\n"
-                      "植物、叶、粪）。每种材料放入自己的仓库槽位；\n"
+                      "植物、叶、粪）。每种材料放入自己的道具袋槽位；\n"
                       "已有的堆叠会被设为该数量。", max(1, start), 999)
     if not qty:
         return
@@ -1845,12 +1869,12 @@ def fill_materials_ui(self):
 def remove_convoy_item_ui(self):
     slots = self._conv_selected() if hasattr(self, "_conv_selected") else []
     if not slots:
-        self.flash("请先选择一个仓库行。", "info")
+        self.flash("请先选择一个道具袋行。", "info")
         return
     for slot in sorted(slots, reverse=True):
         self._core_edit(
             lambda f, s=slot: (layer.remove_convoy_slot(f.payload, s) and f.payload) or None,
-            f"仓库：已清空槽位 {slot + 1}")
+            f"道具袋：已清空槽位 {slot + 1}")
     self.refresh_convoy()
 
 

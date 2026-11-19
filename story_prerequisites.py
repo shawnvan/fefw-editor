@@ -29,9 +29,9 @@ def edited(f, chapter):
     import story
     info = story.read(f)
     if (info.route, info.part) != (2, 1):
-        raise core.SaveError('Dietrich prerequisites cannot change another route.')
+        raise core.SaveError('迪托利希的前置条件修复仅适用于其本路线。')
     if type(chapter) is not int or chapter not in range(1, 13):
-        raise core.SaveError('Unknown Dietrich chapter prerequisite target.')
+        raise core.SaveError('无法识别迪托利希的目标章节。')
     plans = []
     for member, changes in CHAPTER_EDITS.get(chapter, {}).items():
         fm = member_map(f, member); existing = {v.hash:v for v in fm.flags}
@@ -39,7 +39,7 @@ def edited(f, chapter):
         for h, value in changes.items():
             old = existing.get(h)
             if old and (old.wide or old.value not in (0, 1)):
-                raise core.SaveError('Unknown story prerequisite value; no changes made.')
+                raise core.SaveError('剧情前置条件的数值未知，已拒绝修复。')
             if (old is not None if value is None else old is None or old.value != value):
                 effective[h] = value
         if effective: plans.append((fm, effective))

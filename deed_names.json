@@ -5,6 +5,7 @@
     "ac891429": {
       "name": "実績_外伝クリア数",
       "label": "Paralogues cleared",
+      "zh": "完成外传",
       "category": "Story",
       "editable": true,
       "read_only_reason": "",
@@ -70,6 +71,7 @@
     "6e05ea11": {
       "name": "実績_支援会話C再生数",
       "label": "C support conversations viewed",
+      "zh": "观看等级C的支援对话",
       "category": "Supports",
       "editable": true,
       "read_only_reason": "",
@@ -141,6 +143,7 @@
     "cc4a3b3a": {
       "name": "実績_支援会話B再生数",
       "label": "B support conversations viewed",
+      "zh": "观看等级B的支援对话",
       "category": "Supports",
       "editable": true,
       "read_only_reason": "",
@@ -212,6 +215,7 @@
     "01aca43b": {
       "name": "実績_支援会話A再生数",
       "label": "A support conversations viewed",
+      "zh": "观看等级A的支援对话",
       "category": "Supports",
       "editable": true,
       "read_only_reason": "",
@@ -283,6 +287,7 @@
     "eb92a0f6": {
       "name": "実績_プレイ時間",
       "label": "Hours played",
+      "zh": "游玩总时长（小时）",
       "category": "Time",
       "editable": true,
       "read_only_reason": "",
@@ -372,11 +377,13 @@
           "reward": 50
         }
       ],
-      "editing_note": "20-hour completion, reward and save/load tested. Later real-hour updates and higher milestones remain untested."
+      "editing_note": "20-hour completion, reward and save/load tested. Later real-hour updates and higher milestones remain untested.",
+      "zh_editing_note": "已验证 20 小时目标的达成、报酬领取及存档读写。后续游玩时长更新和更高目标尚未经游戏验证。"
     },
     "c6f4cfe6": {
       "name": "実績_技能レベルC成長数",
       "label": "Skill levels raised to C",
+      "zh": "达到技能LVC",
       "category": "Growth",
       "editable": true,
       "read_only_reason": "",
@@ -394,6 +401,7 @@
     "05413e55": {
       "name": "実績_技能レベルB成長数",
       "label": "Skill levels raised to B",
+      "zh": "达到技能LVB",
       "category": "Growth",
       "editable": true,
       "read_only_reason": "",
@@ -411,6 +419,7 @@
     "69c3bd94": {
       "name": "実績_技能レベルA成長数",
       "label": "Skill levels raised to A",
+      "zh": "达到技能LVA",
       "category": "Growth",
       "editable": true,
       "read_only_reason": "",
@@ -428,6 +437,7 @@
     "0c174336": {
       "name": "実績_技能レベルS成長数",
       "label": "Skill levels raised to S",
+      "zh": "达到技能LVS",
       "category": "Growth",
       "editable": true,
       "read_only_reason": "",
@@ -445,6 +455,7 @@
     "0cd50d11": {
       "name": "実績_技能レベル最大成長数",
       "label": "Skill levels raised to maximum",
+      "zh": "达到技能LV上限",
       "category": "Growth",
       "editable": true,
       "read_only_reason": "",
@@ -462,6 +473,7 @@
     "da109aa3": {
       "name": "実績_加護レベル2達成数",
       "label": "Blessings raised to level 2",
+      "zh": "达成加护LV2",
       "category": "Growth",
       "editable": true,
       "read_only_reason": "",
@@ -491,6 +503,7 @@
     "b8892bfd": {
       "name": "実績_加護レベル最大達成数",
       "label": "Blessings raised to maximum",
+      "zh": "达到加护LV上限",
       "category": "Growth",
       "editable": true,
       "read_only_reason": "",
@@ -520,6 +533,7 @@
     "2adbdfbf": {
       "name": "実績_訓練回数",
       "label": "Training sessions",
+      "zh": "进行训练",
       "category": "Base activities",
       "editable": true,
       "read_only_reason": "",
@@ -571,6 +585,7 @@
     "c01c6da3": {
       "name": "実績_観劇回数",
       "label": "Theatre visits",
+      "zh": "在剧场观剧",
       "category": "Base activities",
       "editable": true,
       "read_only_reason": "",
@@ -610,6 +625,7 @@
     "b693004d": {
       "name": "実績_奉仕回数",
       "label": "Temple services performed",
+      "zh": "进行侍奉活动",
       "category": "Base activities",
       "editable": true,
       "read_only_reason": "",
@@ -649,6 +665,7 @@
     "e14e0e21": {
       "name": "実績_宿泊回数",
       "label": "Rooms rented at inns",
+      "zh": "在旅舍住宿",
       "category": "Base activities",
       "editable": true,
       "read_only_reason": "",
@@ -700,6 +717,7 @@
     "dbc7c723": {
       "name": "実績_個別行動周期数",
       "label": "Turns performing individual actions",
+      "zh": "自动赚取的回合数",
       "category": "Base activities",
       "editable": true,
       "read_only_reason": "",
@@ -739,6 +757,7 @@
     "4baccce0": {
       "name": "実績_食事回数",
       "label": "Meals at inns",
+      "zh": "在旅舍用餐",
       "category": "Base activities",
       "editable": true,
       "read_only_reason": "",
@@ -790,6 +809,7 @@
     "23a7a96e": {
       "name": "実績_贈り物回数",
       "label": "Gifts given",
+      "zh": "赠送礼物",
       "category": "Base activities",
       "editable": true,
       "read_only_reason": "",
@@ -841,6 +861,7 @@
     "971d3e40": {
       "name": "実績_パーフェクト回数",
       "label": "Perfect interactions at the perch",
+      "zh": "达成完美白鸟时光",
       "category": "Base activities",
       "editable": true,
       "read_only_reason": "",
@@ -880,6 +901,7 @@
     "ef1833d1": {
       "name": "実績_白鴉絆回数",
       "label": "Bonds deepened with the Pale Raven",
+      "zh": "与白鸦加深牵绊",
       "category": "Base activities",
       "editable": true,
       "read_only_reason": "",
@@ -919,6 +941,7 @@
     "2f6582a3": {
       "name": "実績_資格試験成功回数",
       "label": "Certification exams passed",
+      "zh": "通过资格考试",
       "category": "Base activities",
       "editable": true,
       "read_only_reason": "",
@@ -958,6 +981,7 @@
     "37d2ac86": {
       "name": "実績_ヴァンダル商会交換数",
       "label": "Vandahl Trading Company exchanges",
+      "zh": "在旺达尔商会交换",
       "category": "Base activities",
       "editable": true,
       "read_only_reason": "",
@@ -997,6 +1021,7 @@
     "71015890": {
       "name": "実績_買い物消費金額",
       "label": "Gold spent at shops in bases",
+      "zh": "在据点的商店购买道具（G）",
       "category": "Spending",
       "editable": true,
       "read_only_reason": "",
@@ -1042,6 +1067,7 @@
     "50126cb8": {
       "name": "実績_敵撃破数",
       "label": "Foes defeated in battle",
+      "zh": "在战斗地图中击败敌人",
       "category": "Battle",
       "editable": true,
       "read_only_reason": "",
@@ -1171,6 +1197,7 @@
     "1be28238": {
       "name": "実績_冥魔敵撃破数",
       "label": "Undead foes defeated in battle",
+      "zh": "在战斗地图中击败冥魔敌人",
       "category": "Battle",
       "editable": true,
       "read_only_reason": "",
@@ -1270,6 +1297,7 @@
     "84f61022": {
       "name": "実績_巨大敵撃破数",
       "label": "Giant foes defeated (translation)",
+      "zh": "在战斗地图中击败大型单位",
       "category": "Battle",
       "editable": true,
       "read_only_reason": "",
@@ -1335,6 +1363,7 @@
     "9bd7c8ca": {
       "name": "実績_野生敵撃破数",
       "label": "Beasts defeated in battle",
+      "zh": "在战斗地图中击败兽敌人",
       "category": "Battle",
       "editable": true,
       "read_only_reason": "",
@@ -1398,6 +1427,7 @@
     "550f13b3": {
       "name": "実績_家畜敵撃破数",
       "label": "Livestock defeated in battle",
+      "zh": "在战斗地图中击败畜兽",
       "category": "Battle",
       "editable": true,
       "read_only_reason": "",
@@ -1463,6 +1493,7 @@
     "e203feff": {
       "name": "実績_特別敵撃破数",
       "label": "Golden or silver mummies defeated",
+      "zh": "击败金木乃伊或银木乃伊",
       "category": "Battle",
       "editable": true,
       "read_only_reason": "",
@@ -1528,6 +1559,7 @@
     "6614ae03": {
       "name": "実績_回避回数",
       "label": "Attacks avoided",
+      "zh": "在战斗地图中进行回避",
       "category": "Battle",
       "editable": true,
       "read_only_reason": "",
@@ -1603,6 +1635,7 @@
     "e997585d": {
       "name": "実績_必殺回数",
       "label": "Critical attacks performed",
+      "zh": "在战斗地图中使出必杀的一击",
       "category": "Battle",
       "editable": true,
       "read_only_reason": "",
@@ -1678,6 +1711,7 @@
     "c12cf155": {
       "name": "実績_補助回数",
       "label": "Assists performed",
+      "zh": "在战斗地图中进行辅助",
       "category": "Battle",
       "editable": true,
       "read_only_reason": "",
@@ -1753,6 +1787,7 @@
     "d423a64f": {
       "name": "実績_特技回数",
       "label": "Blaze Arts used",
+      "zh": "使用圣焰战技",
       "category": "Battle",
       "editable": true,
       "read_only_reason": "",
@@ -1828,6 +1863,7 @@
     "444e1de9": {
       "name": "実績_計略回数",
       "label": "Gambits used",
+      "zh": "使用计策",
       "category": "Battle",
       "editable": true,
       "read_only_reason": "",
@@ -1903,6 +1939,7 @@
     "8a922825": {
       "name": "実績_援護回数",
       "label": "Support Salvations performed",
+      "zh": "发生牵绊降临",
       "category": "Battle",
       "editable": true,
       "read_only_reason": "",
@@ -1966,6 +2003,7 @@
     "c989a067": {
       "name": "実績_遭遇戦勝利数",
       "label": "Skirmishes won",
+      "zh": "在遭遇战中胜利",
       "category": "Battle",
       "editable": true,
       "read_only_reason": "",
@@ -2035,6 +2073,7 @@
     "c449c893": {
       "name": "実績_ショートバトル勝利数",
       "label": "Clashes won",
+      "zh": "在速决战中胜利",
       "category": "Battle",
       "editable": true,
       "read_only_reason": "",
@@ -2086,6 +2125,7 @@
     "f222c6fe": {
       "name": "実績_攻撃連携回数",
       "label": "Attack Links performed",
+      "zh": "进行攻击连携",
       "category": "Battle",
       "editable": true,
       "read_only_reason": "",
@@ -2137,6 +2177,7 @@
     "d4e84b3a": {
       "name": "実績_回復連携回数",
       "label": "Recovery Links performed",
+      "zh": "进行回复连携",
       "category": "Battle",
       "editable": true,
       "read_only_reason": "",
@@ -2188,6 +2229,7 @@
     "73f4db16": {
       "name": "実績_攻防連携回数",
       "label": "Mixed Links performed",
+      "zh": "进行攻防连携",
       "category": "Battle",
       "editable": true,
       "read_only_reason": "",
@@ -2239,6 +2281,7 @@
     "160b2bb2": {
       "name": "実績_商人消費金額",
       "label": "Gold spent with travelling merchants",
+      "zh": "向场所的商人支付（G）",
       "category": "Spending",
       "editable": true,
       "read_only_reason": "",
@@ -2284,6 +2327,7 @@
     "a0b99107": {
       "name": "実績_探索回数",
       "label": "Spots searched",
+      "zh": "进行场所的探索",
       "category": "Exploration",
       "editable": true,
       "read_only_reason": "",
@@ -2347,6 +2391,7 @@
     "16f518a2": {
       "name": "実績_レア素材入手数",
       "label": "Rare materials obtained through searches",
+      "zh": "在探索时获得隐藏材料",
       "category": "Exploration",
       "editable": true,
       "read_only_reason": "",
@@ -2410,6 +2455,7 @@
     "730acddc": {
       "name": "実績_饗宴回数",
       "label": "Feasts held",
+      "zh": "举行飨宴",
       "category": "Exploration",
       "editable": true,
       "read_only_reason": "",
@@ -2473,6 +2519,7 @@
     "e7d753ab": {
       "name": "実績_興行回数",
       "label": "Local performances given",
+      "zh": "进行地区表演",
       "category": "Exploration",
       "editable": true,
       "read_only_reason": "",
@@ -2506,6 +2553,7 @@
     "c2f3210d": {
       "name": "実績_鉱石入手数",
       "label": "Pieces of ore obtained",
+      "zh": "获得矿石",
       "category": "Exploration",
       "editable": true,
       "read_only_reason": "",

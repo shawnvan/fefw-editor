@@ -48,15 +48,15 @@ def title(row) -> str:
     return FAST_TRAVEL.get(row["label"], row["label"])
 
 
-def apply_labels(names: dict[int, dict]) -> None:
-    """Use the Chinese names; keep exact keys in Reads as."""
+def apply_labels(names: dict[int, dict], *, localized: bool = False) -> None:
+    """Label destinations without altering the original keys."""
     entries = catalog()
     for h, row in entries.items():
         if names.get(h, {}).get("name", row["name"]) != row["name"]:
             raise FastTravelError(f"Conflicting flag name for {h:08x}")
     for h, row in entries.items():
         names[h] = {**names.get(h, {}), "name": row["name"],
-                    "label": f"快速传送：{title(row)}",
+                    "label": f"快速传送：{title(row)}" if localized else f"Fast travel: {row['label']}",
                     "kind": "fast_travel"}
 
 

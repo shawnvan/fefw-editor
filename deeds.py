@@ -49,16 +49,23 @@ def catalog() -> dict[int, dict]:
             raise ValueError("too few counters")
         return entries
     except (OSError, ValueError, KeyError, TypeError) as exc:
-        raise DeedError(f"Cannot load deed_names.json: {exc}") from exc
+        raise DeedError(f"无法加载伟业录目录 deed_names.json：{exc}") from exc
 
 
-def apply_labels(names: dict[int, dict]) -> None:
+def display_name(row: dict) -> str:
+    return row.get("zh") or row["label"]
+
+
+def apply_labels(names: dict[int, dict], *, localized: bool = False) -> None:
     updates = {}
     for h, row in catalog().items():
-        updates[h] = {"name": row["name"], "label": f"Deed progress: {row['label']}", "kind": "deed"}
+        title = display_name(row) if localized else row["label"]
+        progress = "伟业录进度：" if localized else "Deed progress: "
+        claim = "伟业录领取状态：" if localized else "Deed claim: "
+        updates[h] = {"name": row["name"], "label": progress + title, "kind": "deed"}
         for tier in row["milestones"]:
             updates[int(tier["hash"], 16)] = {
-                "name": tier["name"], "label": f"Deed claim: {row['label']} · {tier['target']:,}",
+                "name": tier["name"], "label": f"{claim}{title} · {tier['target']:,}",
                 "kind": "deed"}
     for h, row in updates.items():
         if names.get(h, {}).get("name", row["name"]) != row["name"]:
@@ -71,17 +78,17 @@ def locate(f: core.SaveFile) -> core.FlagMap:
     """Locate the live counter/state map by identities and object ancestry."""
     blocks = [b for b in f.blocks if b.name == "GameUserData"]
     if len(blocks) != 1:
-        raise DeedError("No unique GameUserData block; deed editing is disabled.")
+        raise DeedError("GameUserData 数据块不唯一，无法编辑伟业录。")
     counters = catalog().keys()
     identities = set(counters) | {int(t["hash"], 16) for r in catalog().values() for t in r["milestones"]}
     candidates = [m for m in core.flag_maps(f) if any(fl.hash in identities for fl in m.flags)]
     if len(candidates) != 1:
-        raise DeedError("No unique Notable Deeds list found; this save is read-only here.")
+        raise DeedError("找不到唯一的伟业录列表，此存档在此页只读。")
     fm = candidates[0]
     if len({fl.hash for fl in fm.flags} & counters) < MIN_ANCHORS:
-        raise DeedError("At least three known counters are needed to identify the deeds list.")
+        raise DeedError("至少需要三个已知计数项才能识别伟业录列表。")
     if len({fl.hash for fl in fm.flags}) != len(fm.flags):
-        raise DeedError("Duplicate deeds-list keys; editing is disabled.")
+        raise DeedError("伟业录列表中有重复的键，无法编辑。")
     tree = f.tree()
     node = tree.node_at(fm.start)
     user = tree.node_at(blocks[0].start)
@@ -89,7 +96,7 @@ def locate(f: core.SaveFile) -> core.FlagMap:
     if (node < 0 or user < 0 or group < 0 or tree.nodes[node].struct
             or not tree.nodes[group].struct or tree.nodes[group].parent != user
             or any(n.parent == node for n in tree.nodes)):
-        raise DeedError("Unrecognised deeds-list structure; editing is disabled.")
+        raise DeedError("无法识别伟业录列表的结构，无法编辑。")
     return fm
 
 
@@ -97,24 +104,26 @@ def read(f: core.SaveFile) -> dict[int, int]:
     return {fl.hash: fl.value for fl in locate(f).flags}
 
 
-def claim_label(value: int | None) -> str:
+def claim_label(value: int | None, *, zh: bool = False) -> str:
     if value is None:
-        return "Not stored"
+        return "未记录" if zh else "Not stored"
     if value == 2:
-        return "Complete, unclaimed (2)"
+        return "已达成，未领取（2）" if zh else "Complete, unclaimed (2)"
     if value == 4:
-        return "Claimed (4)"
-    return f"Unknown ({value}); preserved"
+        return "已领取（4）" if zh else "Claimed (4)"
+    return f"未知（{value}），已保留" if zh else f"Unknown ({value}); preserved"
 
 
-def read_only_reason(h: int, values: dict[int, int]) -> str:
+def read_only_reason(h: int, values: dict[int, int], *, zh: bool = False) -> str:
     row = catalog()[h]
     if not row["editable"]:
         return row["read_only_reason"]
     if values.get(h, 0) < 0:
-        return "Negative stored progress is not understood; preserved."
+        return ("存档中的进度为负值，含义未知，已保留。" if zh
+                else "Negative stored progress is not understood; preserved.")
     if any(values.get(int(t["hash"], 16)) not in (None, 2, 4) for t in row["milestones"]):
-        return "A milestone has an unknown claim state; this counter is read-only."
+        return ("有目标的领取状态未知，此计数项只读。" if zh
+                else "A milestone has an unknown claim state; this counter is read-only.")
     return ""
 
 
@@ -143,15 +152,15 @@ def edited(f: core.SaveFile, h: int, value: int) -> bytearray:
     """Change exactly one allowlisted counter, never a milestone state or currency."""
     cat = catalog()
     if h not in cat or type(value) is not int or value < 0:
-        raise DeedError("Choose one known counter and enter a non-negative whole number.")
+        raise DeedError("请选择一个已知计数项，并输入非负整数。")
     fm = locate(f)
     values = {fl.hash: fl.value for fl in fm.flags}
-    reason = read_only_reason(h, values)
+    reason = read_only_reason(h, values, zh=True)
     if reason:
         raise DeedError(reason)
     limit = maximum(h, values)
     if value > limit:
-        raise DeedError(f"Enter 0–{limit:,} for this counter.")
+        raise DeedError(f"请输入 0 至 {limit:,} 范围内的数值。")
     # Missing zero counters are normal. A no-op must not create them.
     if values.get(h, 0) == value:
         return bytearray(f.payload)
@@ -168,6 +177,6 @@ def edited(f: core.SaveFile, h: int, value: int) -> bytearray:
         records.append(struct.pack("<I", h) + (b"\xff" + struct.pack("<i", value)
                        if value > 254 else bytes([value])))
     if len(records) > 65535:
-        raise DeedError("The deeds list is full.")
+        raise DeedError("伟业录列表已满。")
     body = bytes([f.payload[fm.start + 4]]) + struct.pack("<H", len(records)) + b"".join(records)
     return core.replace_content(f, fm.start, body)

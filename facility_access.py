@@ -20,6 +20,25 @@ YU_PHAS = 0x65411bed
 YU_PHAS_GATE = 0x7d2c41eb
 
 CONDITIONS = {
+    '行動範囲制限_上層': 'Movement restricted: Dagsion upper area (separate from function unlock)',
+    '行動範囲制限_中層': 'Movement restricted: Dagsion middle area (separate from function unlock)',
+    '行動範囲制限_下層': 'Movement restricted: Dagsion lower area / port (separate from function unlock)',
+    '行動範囲制限_富裕区-商業区': 'Movement restricted: wealthy–commercial district passage',
+    '拠点_カイ篇1部2章_行動制限3': 'Story restriction: Cai P1 Ch2, group 3',
+    '拠点_カイ篇1部11章_行動制限2': 'Story restriction: Cai P1 Ch11, group 2',
+    '拠点_カイ篇1部11章_行動制限3': 'Story restriction: Cai P1 Ch11, group 3',
+    '拠点_カイ篇1部11章_行動制限4': 'Story restriction: Cai P1 Ch11, group 4',
+    '拠点_セオドラ篇1部6章_行動制限1': 'Story restriction: Theodora P1 Ch6, group 1',
+    '拠点_セオドラ篇1部11章_行動制限1': 'Story restriction: Theodora P1 Ch11, group 1',
+    '拠点_セオドラ篇1部11章_行動制限3': 'Story restriction: Theodora P1 Ch11, group 3',
+    '2部5章_行動制限1': 'Story restriction: P2 Ch5, group 1',
+    '2部6章_行動制限1': 'Story restriction: P2 Ch6, group 1',
+    '大釜部屋解放': 'Cauldron room unlocked (access-condition flag)',
+    '拠点_Hub_000_A60_アウロラ神殿側ドア開放': 'Door opened: A60, Aurora temple side',
+    '拠点_Hub_000_A60_地下牢側ドア開放': 'Door opened: A60, dungeon side',
+}
+
+CONDITIONS_ZH = {
     '行動範囲制限_上層': '移动受限：鞑古席翁上层（与功能解锁相互独立）',
     '行動範囲制限_中層': '移动受限：鞑古席翁中层（与功能解锁相互独立）',
     '行動範囲制限_下層': '移动受限：鞑古席翁下层/港口（与功能解锁相互独立）',
@@ -50,9 +69,10 @@ DETAILS = {
 }
 
 
-def apply_labels(names):
+def apply_labels(names, *, localized=False):
     updates = {}
-    for key, label in CONDITIONS.items():
+    labels = CONDITIONS_ZH if localized else CONDITIONS
+    for key, label in labels.items():
         h = core.id_hash(key)
         if names.get(h, {}).get('name', key) != key:
             raise core.SaveError(f'Conflicting access-condition identity for {h:08x}')
@@ -136,7 +156,7 @@ def diagnostics(f):
             lines.append(row['error'])
     lines += ['', '相关的已保存标记（只读；缺失表示没有保存记录）：']
     maps = core.flag_maps(f)
-    for key, label in CONDITIONS.items():
+    for key, label in CONDITIONS_ZH.items():
         h = core.id_hash(key)
         hits = [(m.index, v.value) for m in maps for v in m.flags if v.hash == h]
         state = ', '.join(f'列表 {i}：{v}' for i, v in hits) or '缺失'

@@ -56,15 +56,18 @@ def title(h: int, row: dict) -> str:
     return chinese_name("tutorials", h) or row["label"]
 
 
-def apply_labels(names: dict[int, dict]) -> None:
+def apply_labels(names: dict[int, dict], *, localized: bool = False) -> None:
     """Overlay verified labels without translating or changing hashed keys."""
     for h, row in catalog().items():
         previous = names.get(h, {})
         if previous.get("name", row["name"]) != row["name"]:
             raise TutorialError(f"Conflicting flag name for {h:08x}")
-        suffix = '（暂定）' if row['evidence'] == 'provisional-translation' else ''
+        provisional = row['evidence'] == 'provisional-translation'
+        zh = chinese_name("tutorials", h) if localized else ""
+        label = ("教程：" + zh + ('（暂定）' if provisional else '') if zh else
+                 "Tutorial: " + row["label"] + (' (provisional)' if provisional else ''))
         names[h] = {**previous, "name": row["name"],
-                    "label": "教程：" + title(h, row) + suffix, "kind": "tutorial"}
+                    "label": label, "kind": "tutorial"}
 
 
 def evidence_label(row):

@@ -66,12 +66,16 @@ def chinese_name(category: str, value: int) -> str:
     """Optional game-derived names; absent or invalid data keeps normal fallback."""
     global _CHINESE_NAMES
     if _CHINESE_NAMES is None:
-        try:
-            with open(os.path.join(USER_DIR, "chinese_names.json"), encoding="utf8") as fh:
-                data = json.load(fh)
-            _CHINESE_NAMES = data if isinstance(data, dict) else {}
-        except (OSError, ValueError):
-            _CHINESE_NAMES = {}
+        _CHINESE_NAMES = {}
+        for folder in dict.fromkeys((USER_DIR, DATA_DIR)):
+            try:
+                with open(os.path.join(folder, "chinese_names.json"), encoding="utf8") as fh:
+                    data = json.load(fh)
+            except (OSError, ValueError):
+                continue
+            if isinstance(data, dict):
+                _CHINESE_NAMES = data
+                break
     category_names = _CHINESE_NAMES.get(category, {})
     if not isinstance(category_names, dict):
         return ""
@@ -126,11 +130,16 @@ def _class_lower() -> dict:
     return _CLASS_LOWER
 
 
+def job_chinese_name(value: int) -> str:
+    """Official class title, including known variants of its original key."""
+    return chinese_name("classes", value) or chinese_name("class_variants", value)
+
+
 def job_name(value: int) -> str:
     meta = job_ids().get(value)
     if not meta:
         return f"unknown class {value:08x}"
-    zh = chinese_name("classes", value)
+    zh = job_chinese_name(value)
     if zh:
         return zh
     jp = meta.get("jp") or ""
@@ -139,7 +148,7 @@ def job_name(value: int) -> str:
     # name; a few entries carry a mismatched English label, so the Japanese
     # JID_ key wins over `en`; ASCII ids (JID_Archer, JID_H_Sniper …) duplicate
     # the named classes and are matched by their stem, case-insensitively
-    off = "（下马）" if en.endswith(" (dismounted)") else ""
+    off = "（徒步）" if en.endswith(" (dismounted)") else ""
     if off:
         en = en[:-len(" (dismounted)")]
     hit = CLASSES.get(jp)
@@ -1143,14 +1152,13 @@ def item_kind(meta: dict) -> str:
 
 
 def item_label(iid: int, meta: dict | None = None) -> str:
-    """English name, with the forge level (+1, +2…) the Japanese name carries.
+    """Display name, with the forge level (+1, +2…) the Japanese name carries.
 
-    Many English names drop it, so "Silver Axe" would otherwise appear four
-    times in a list with nothing to tell the copies apart.
+    Official Chinese names take priority over the hand table and original names.
     """
     meta = item_ids().get(iid) if meta is None else meta
     if not meta:
-        return f"unknown item {iid:08x}"
+        return f"未知道具 0x{iid:08x}"
     en = unicodedata.normalize("NFKC", meta.get("en") or "").strip()
     jp = unicodedata.normalize("NFKC", meta.get("jp") or "").strip()
     m = re.search(r"\+(\d+)$", jp)

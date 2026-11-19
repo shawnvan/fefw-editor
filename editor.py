@@ -48,7 +48,7 @@ STAT_MAX = 255          # the record parser rejects stat blocks with values >= 3
 SKILL_MAX = 9999        # find_skills() stops recognising a table above this
 QTY_MAX = 999           # quantities seen in real saves stay well under this
 
-STAT_LONG = {"HP": "生命值", "Str": "力量", "Mag": "魔力", "Dex": "技巧",
+STAT_LONG = {"HP": "HP", "Str": "力量", "Mag": "魔力", "Dex": "技巧",
              "Spd": "速度", "Lck": "幸运", "Def": "防守", "Res": "魔防",
              "Cha": "魅力"}
 
@@ -77,13 +77,13 @@ KIND_COLORS = {
 GRADE_COLORS = ["#7b8494", "#8b93a3", "#5aa9e6", "#4c9be0", "#4fc29a", "#3fb489",
                 "#e3c04d", "#e0ab3a", "#f0884f", "#ec7040", "#e8557a", "#d9417e"]
 
-CAT_LABEL = {"weapon": "武器", "accessory": "饰品", "consumable": "消耗品"}
+CAT_LABEL = {"weapon": "武器", "accessory": "装备", "consumable": "消耗品"}
 
 # display-only: the kind keys themselves stay English (they are logic keys for
 # filters, colours and slot locks); only what the user reads is translated
 KIND_ZH = {"Sword": "剑", "Lance": "枪", "Axe": "斧", "Bow": "弓", "Tome": "魔道书",
-           "Staff": "杖", "Fist": "格斗", "Shield": "盾", "Weapon": "武器",
-           "Accessory": "饰品", "Consumable": "消耗品", "Item": "道具", "Spell": "魔法"}
+           "Staff": "杖", "Fist": "手甲", "Shield": "盾", "Weapon": "武器",
+           "Accessory": "装备", "Consumable": "消耗品", "Item": "道具", "Spell": "魔法"}
 KIND_OF = {v: k for k, v in KIND_ZH.items()}
 
 
@@ -921,27 +921,27 @@ class App(AdvancedMixin, tk.Tk):
         self.facilities_page = ttk.Frame(self.pages, padding=(14, 14, 14, 8))
         self.deeds_page = ttk.Frame(self.pages, padding=(14, 14, 14, 8))
         self.boons_page = ttk.Frame(self.pages, padding=(14, 14, 14, 8))
-        self.pages.add(self.units_page, text='角色')
-        self.pages.add(self.convoy_page, text='仓库')
-        self.pages.add(self.gold_page, text='金钱')
-        self.pages.add(self.supports_page, text='支援')
+        self.pages.add(self.units_page, text='单位')
+        self.pages.add(self.convoy_page, text='道具袋')
+        self.pages.add(self.gold_page, text='金币')
+        self.pages.add(self.supports_page, text='支援情报')
         self.pages.add(self.player_page, text='玩家')
-        self.pages.add(self.classes_page, text='职业')
+        self.pages.add(self.classes_page, text='兵种')
         self.pages.add(self.mounts_page, text='坐骑')
         self.pages.add(self.world_page, text="世界地图")
         self.pages.add(self.tutorials_page, text="教程")
         self.pages.add(self.blessings_page, text="加护")
         self.pages.add(self.fast_travel_page, text="快速传送")
         self.pages.add(self.facilities_page, text="功能")
-        self.pages.add(self.deeds_page, text="Notable Deeds")
-        self.pages.add(self.boons_page, text="Boons")
+        self.pages.add(self.deeds_page, text="伟业录")
+        self.pages.add(self.boons_page, text="救世的祝福")
         self.pages.add(self.flags_page, text='标记')
 
         tab_menu = tk.Menu(self, tearoff=False)
         for page in self.pages.tabs():
             tab_menu.add_command(label=self.pages.tab(page, 'text'),
                                  command=lambda page=page: self.pages.select(page))
-        self.tab_menu_button = ttk.Menubutton(bar, text='Go to tab', menu=tab_menu)
+        self.tab_menu_button = ttk.Menubutton(bar, text='切换页签', menu=tab_menu)
         self.tab_menu_button.pack(side='right', padx=(10, 16))
         self.status_lbl.pack(side='left', fill='x', expand=True)
         self.pages.enable_traversal()
@@ -997,10 +997,10 @@ class App(AdvancedMixin, tk.Tk):
         side.columnconfigure(0, weight=1)
         side.rowconfigure(3, weight=1)
         top.grid(row=0, column=0, sticky="ew")
-        ttk.Label(top, text='角色', style="CardH3.TLabel").pack(side="left")
+        ttk.Label(top, text='单位', style="CardH3.TLabel").pack(side="left")
         self.unit_count = ttk.Label(top, text="", style="CardMuted.TLabel")
         self.unit_count.pack(side="right")
-        self.unit_search = SearchEntry(side, "搜索角色或职业…  (Ctrl+F)",
+        self.unit_search = SearchEntry(side, "搜索单位或兵种…  (Ctrl+F)",
                                        self.refresh_units, width=30)
         self.unit_search.grid(row=1, column=0, sticky="ew", pady=(8, 6))
         self.unit_search.bind("<Down>", lambda e: (self.unit_tree.focus_set(), "break")[1])
@@ -1011,7 +1011,7 @@ class App(AdvancedMixin, tk.Tk):
         self.unit_tree = scrolled_tree(side, columns=("number", "lv"), show="tree headings",
                                        selectmode="browse")
         self.unit_tree.heading("#0", text='名称', anchor="w")
-        self.unit_tree.heading("lv", text='等级', anchor="e")
+        self.unit_tree.heading("lv", text='LV', anchor="e")
         self.unit_tree.heading("number", text='编号', anchor="e")
         self.unit_tree.column("number", width=62, minwidth=55, anchor="e", stretch=False)
         self.unit_tree.column("#0", width=200, minwidth=140)
@@ -1020,13 +1020,13 @@ class App(AdvancedMixin, tk.Tk):
         self.unit_tree.bind("<<TreeviewSelect>>", self.on_unit_select)
         acts = ttk.Frame(side, style="Card.TFrame")
         acts.grid(row=4, column=0, sticky="ew", pady=(8, 0))
-        ttk.Button(acts, text='添加角色…', style="Small.TButton",
+        ttk.Button(acts, text='添加单位…', style="Small.TButton",
                    command=self.open_add_unit).pack(fill="x", pady=(0, 6))
-        ttk.Button(acts, text='修改角色编号…', style="Small.TButton",
+        ttk.Button(acts, text='修改单位编号…', style="Small.TButton",
                    command=self.open_unit_number).pack(fill="x", pady=(0, 6))
-        ttk.Button(acts, text='导入角色…', style="Small.TButton",
+        ttk.Button(acts, text='导入单位…', style="Small.TButton",
                    command=self.copy_unit_in).pack(fill="x")
-        ttk.Button(acts, text='移除角色', style="Small.TButton",
+        ttk.Button(acts, text='移除单位', style="Small.TButton",
                    command=self.remove_current_unit).pack(fill="x", pady=(6, 0))
 
         main = ttk.Frame(pane)
@@ -1039,7 +1039,7 @@ class App(AdvancedMixin, tk.Tk):
         self.avatar.pack(side="left")
         info = ttk.Frame(card, style="Card.TFrame")
         info.pack(side="left", padx=(14, 0), fill="x", expand=True)
-        self.unit_name = ttk.Label(info, text='未选择角色', style="CardH1.TLabel")
+        self.unit_name = ttk.Label(info, text='未选择单位', style="CardH1.TLabel")
         self.unit_name.pack(anchor="w")
         self.unit_sub = ttk.Label(info, text='请先打开存档文件夹。',
                                   style="CardMuted.TLabel")
@@ -1063,7 +1063,7 @@ class App(AdvancedMixin, tk.Tk):
 
     def _build_stats_tab(self):
         self.stats_scroll = ScrollableFrame(self.unit_tabs, style="Card.TFrame", padding=18)
-        self.unit_tabs.add(self.stats_scroll, text='属性')
+        self.unit_tabs.add(self.stats_scroll, text='状态')
         tab = self.stats_scroll.body
         self._stat_spins: list[ttk.Spinbox] = []
         vcmd = self._num_vcmd()
@@ -1071,8 +1071,8 @@ class App(AdvancedMixin, tk.Tk):
         row = ttk.Frame(tab, style="Card.TFrame")
         row.pack(fill="x")
         self.lvl_var, self.exp_var = tk.StringVar(), tk.StringVar()
-        for label, var, fn, lo, hi in (("等级", self.lvl_var, self.commit_level, 1, 99),
-                                       ("经验", self.exp_var, self.commit_exp, 0, 99)):
+        for label, var, fn, lo, hi in (("LV", self.lvl_var, self.commit_level, 1, 99),
+                                       ("EXP", self.exp_var, self.commit_exp, 0, 99)):
             box = ttk.Frame(row, style="Card.TFrame")
             box.pack(side="left", padx=(0, 28))
             ttk.Label(box, text=label, style="StatName.TLabel").pack(anchor="w")
@@ -1095,7 +1095,7 @@ class App(AdvancedMixin, tk.Tk):
         gh.pack(fill="x", pady=(0, 10))
         ttk.Label(gh, text='升级获得的属性点', style="CardH3.TLabel").pack(anchor="w")
         ttk.Label(gh, style="CardFaint.TLabel", wraplength=700, justify="left",
-                  text='这些数值是升级获得的属性点，不是游戏中的最终属性；最终值还包括职业、个人基础值和道具加成。').pack(anchor="w")
+                  text='这些数值是升级获得的属性点，不是游戏中的最终属性；最终值还包括兵种、个人基础值和道具加成。').pack(anchor="w")
 
         grid = ttk.Frame(tab, style="Card.TFrame")
         grid.pack(fill="x")
@@ -1124,18 +1124,18 @@ class App(AdvancedMixin, tk.Tk):
             self.stat_bars.append(bar)
 
         ttk.Label(tab, style="CardFaint.TLabel", wraplength=700, justify="left",
-                  text='修改生命成长会同时改变最大生命值。按回车或 Tab 应用，点击保存后写入。'
+                  text='修改HP成长会同时改变最大HP。按回车或 Tab 应用，点击保存后写入。'
                   ).pack(anchor="w", side="bottom")
 
 
     def _build_inventory_tab(self):
         tab = ttk.Frame(self.unit_tabs, style="Card.TFrame", padding=(18, 18, 6, 18))
-        self.unit_tabs.add(tab, text='背包')
+        self.unit_tabs.add(tab, text='持有物品')
         pane = ttk.PanedWindow(tab, orient="horizontal")
         pane.pack(fill="both", expand=True)
         left = ttk.Frame(pane, style="Card.TFrame", padding=(0, 0, 12, 0))
         pane.add(left, weight=1)
-        ttk.Label(left, text='携带道具', style="CardH3.TLabel").pack(anchor="w")
+        ttk.Label(left, text='持有物品', style="CardH3.TLabel").pack(anchor="w")
         ttk.Label(left, text='选择槽位，再选择替换道具。',
                   style="CardMuted.TLabel").pack(anchor="w", pady=(2, 8))
         ttk.Checkbutton(left, text='允许任意道具类型（可能导致游戏异常）',
@@ -1161,30 +1161,30 @@ class App(AdvancedMixin, tk.Tk):
 
     def _build_class_tab(self):
         tab = ttk.Frame(self.unit_tabs, style="Card.TFrame", padding=18)
-        self.unit_tabs.add(tab, text='职业')
+        self.unit_tabs.add(tab, text='兵种')
         cur = ttk.Frame(tab, style="Card.TFrame")
         cur.pack(fill="x")
-        ttk.Label(cur, text='当前职业', style="CardMuted.TLabel").pack(side="left")
+        ttk.Label(cur, text='当前兵种', style="CardMuted.TLabel").pack(side="left")
         self.class_now = ttk.Label(cur, text="—", style="CardH3.TLabel")
         self.class_now.pack(side="left", padx=(10, 0))
 
         row = ttk.Frame(tab, style="Card.TFrame")
         row.pack(fill="x", pady=(12, 6))
-        self.class_search = SearchEntry(row, "搜索职业…", self.refresh_classes)
+        self.class_search = SearchEntry(row, "搜索兵种…", self.refresh_classes)
         self.class_search.pack(side="left", fill="x", expand=True)
-        ttk.Checkbutton(row, text='包含怪物及内部职业',
+        ttk.Checkbutton(row, text='包含怪物及内部兵种',
                         style="Card.TCheckbutton", variable=self.show_bad_classes,
                         command=self.refresh_classes).pack(side="left", padx=(12, 0))
         bottom = ttk.Frame(tab, style="Card.TFrame")
         bottom.pack(side="bottom", fill="x", pady=(10, 0))
-        ttk.Button(bottom, text='更改职业', style="Accent.TButton",
+        ttk.Button(bottom, text='更改兵种', style="Accent.TButton",
                    command=self.apply_class).pack(side="right", anchor="n")
         ttk.Label(bottom, style="CardWarn.TLabel", wraplength=560, justify="left",
-                  text='仅修改职业编号，不会重新计算移动力、可用武器、职业技能和最大生命值。请在游戏中检查。'
+                  text='仅修改兵种编号，不会重新计算移动力、可用武器、兵种技能和最大HP。请在游戏中检查。'
                   ).pack(side="left", fill="x", expand=True)
         self.class_tree = scrolled_tree(tab, columns=("jp",), show="tree headings",
                                         selectmode="browse", height=6)
-        self.class_tree.heading("#0", text='职业', anchor="w")
+        self.class_tree.heading("#0", text='兵种', anchor="w")
         self.class_tree.heading("jp", text='内部名称', anchor="w")
         self.class_tree.column("#0", width=260)
         self.class_tree.column("jp", width=260)
@@ -1200,23 +1200,23 @@ class App(AdvancedMixin, tk.Tk):
         pane.add(left, weight=1)
         top = ttk.Frame(left, style="Card.TFrame")
         top.pack(fill="x")
-        ttk.Label(top, text='仓库', style="CardH3.TLabel").pack(side="left")
+        ttk.Label(top, text='道具袋', style="CardH3.TLabel").pack(side="left")
         self.conv_count = ttk.Label(top, text="", style="CardMuted.TLabel")
         self.conv_count.pack(side="right")
-        ttk.Label(left, text='按槽位显示仓库中的所有物品，包括材料。',
+        ttk.Label(left, text='按槽位显示道具袋中的物品，包括材料。',
                   style="CardMuted.TLabel").pack(anchor="w", pady=(2, 6))
         self.conv_problem = ttk.Frame(left, style="Card.TFrame")
         self.conv_problem_lbl = ttk.Label(self.conv_problem, text="", style="CardWarn.TLabel",
                                           wraplength=420, justify="left")
         self.conv_problem_lbl.pack(fill="x")
-        self.conv_repair_btn = ttk.Button(self.conv_problem, text='修复仓库',
+        self.conv_repair_btn = ttk.Button(self.conv_problem, text='修复道具袋',
                                           style="Accent.TButton", command=self.repair_convoy_ui)
-        self.conv_filter = SearchEntry(left, "搜索仓库…", self.refresh_convoy)
+        self.conv_filter = SearchEntry(left, "搜索道具袋…", self.refresh_convoy)
         self.conv_filter.pack(fill="x", pady=(0, 6))
         ctl = ttk.Frame(left, style="Card.TFrame")
         ctl.pack(side="bottom", fill="x", pady=(10, 0))
         ttk.Label(left, style="CardFaint.TLabel", wraplength=420, justify="left",
-                  text="每种可堆叠道具都有自己独立的仓库槽位。“添加道具…”放入一整叠；不可堆叠"
+                  text="每种可堆叠道具都有自己独立的道具袋槽位。“添加道具…”放入一整叠；不可堆叠"
                        "的装备（武器、魔法书、盾牌、多次使用的药剂）每件占一个槽位，放不下时"
                        "“添加”会拒绝。“移除”清空一个槽位；列表保持槽位总数不变，其后"
                        "的内容都会安全移动。“所有材料…”会以数量 1 备齐每种矿石、肉、鱼和植物。"
@@ -1257,7 +1257,7 @@ class App(AdvancedMixin, tk.Tk):
         wrap.pack(fill="both", expand=True)
         card = ttk.Frame(wrap, style="Card.TFrame", padding=24)
         card.pack(fill="x")
-        ttk.Label(card, text='金钱', style="StatName.TLabel").pack(anchor="w")
+        ttk.Label(card, text='金币', style="StatName.TLabel").pack(anchor="w")
         self.gold_now = ttk.Label(card, text="—", style="CardHuge.TLabel")
         self.gold_now.pack(anchor="w")
         self.gold_hint = ttk.Label(card, text="", style="CardMuted.TLabel")
@@ -1269,7 +1269,7 @@ class App(AdvancedMixin, tk.Tk):
         e = ttk.Entry(row, textvariable=self.gold_new, width=14)
         e.pack(side="left", padx=8)
         e.bind("<Return>", lambda ev: self.set_gold())
-        ttk.Button(row, text='设置金钱', style="Accent.TButton",
+        ttk.Button(row, text='设置金币', style="Accent.TButton",
                    command=self.set_gold).pack(side="left")
         for amt in (10_000, 100_000, 999_999):
             ttk.Button(row, text=f"{amt:,}", style="Small.TButton",
@@ -1277,7 +1277,7 @@ class App(AdvancedMixin, tk.Tk):
                        ).pack(side="left", padx=(8 if amt == 10_000 else 4, 0))
 
         ttk.Label(wrap, style="CardFaint.TLabel", wraplength=760, justify="left",
-                  text="金钱在此游戏的每个槽位里位置固定（GameUserData + 6），无需定位："
+                  text="金币在此游戏的每个槽位里位置固定（GameUserData + 6），无需定位："
                        "上方显示的数值就是游戏会读到的值。章节与战斗快照保留各自的金额。"
                   ).pack(anchor="w", pady=(12, 0))
 
@@ -1302,18 +1302,18 @@ class App(AdvancedMixin, tk.Tk):
         ttk.Label(top, text='支援对话', style="CardH3.TLabel").pack(side="left")
         self.sup_count = ttk.Label(top, text="", style="CardMuted.TLabel")
         self.sup_count.pack(side="right")
-        ttk.Label(side, text='每位角色的支援组合，以及此存档为每对角色保存的点数。',
+        ttk.Label(side, text='查看各单位的支援关系，以及每组伙伴在此存档中的支援值。',
                   style="CardMuted.TLabel", wraplength=210, justify="left"
                   ).pack(anchor="w", pady=(2, 8))
-        self.sup_search = SearchEntry(side, "搜索角色…", self.refresh_support_chars,
+        self.sup_search = SearchEntry(side, "搜索单位…", self.refresh_support_chars,
                                       width=26)
         self.sup_search.pack(fill="x", pady=(0, 6))
-        ttk.Checkbutton(side, text='仅显示此存档中的角色',
+        ttk.Checkbutton(side, text='仅显示此存档中的单位',
                         style="Card.TCheckbutton", variable=self.sup_party_only,
                         command=self.refresh_support_chars).pack(anchor="w", pady=(0, 6))
         self.sup_char_tree = scrolled_tree(side, columns=("n", "top"), show="tree headings",
                                            selectmode="browse")
-        self.sup_char_tree.heading("#0", text='角色', anchor="w")
+        self.sup_char_tree.heading("#0", text='单位', anchor="w")
         self.sup_char_tree.heading("n", text='支援组合', anchor="e")
         self.sup_char_tree.heading("top", text='最高', anchor="e")
         self.sup_char_tree.column("#0", width=140, minwidth=100)
@@ -1331,7 +1331,7 @@ class App(AdvancedMixin, tk.Tk):
         self.sup_avatar.pack(side="left")
         info = ttk.Frame(card, style="Card.TFrame")
         info.pack(side="left", padx=(14, 0), fill="x", expand=True)
-        self.sup_name = ttk.Label(info, text='未选择角色', style="CardH1.TLabel")
+        self.sup_name = ttk.Label(info, text='未选择单位', style="CardH1.TLabel")
         self.sup_name.pack(anchor="w")
         self.sup_sub = ttk.Label(info, text='打开存档以查看记录。',
                                  style="CardMuted.TLabel")
@@ -1340,12 +1340,10 @@ class App(AdvancedMixin, tk.Tk):
         # the note is packed before the table so a short window shrinks the
         # table instead of pushing the buttons and the note out of sight
         ttk.Label(main, style="CardFaint.TLabel", justify="left", wraplength=620,
-                  text="点数是游戏转化为支援等级的数值：等级 1-5 分别从 0 / 400 / 1,400 / "
-                       "2,400 / 3,200 点开始（3,200 为上限，已在游戏内确认；其余数值来自 "
-                       "annasnotebook.net 的社区表格）。存档为每对角色都保留了槽位，因此支援"
-                       "尚未开启的组合在这里也有数值——游戏可能要等到关系开启后才会显示。"
-                       "“已观看对话”是存档中对应对话的 支援会話 标记；“最高”是游戏数据"
-                       "给予该组合的最高等级。"
+                  text="支援LV 1 至 5 的起始支援值分别为 0、400、1,400、2,400、3,200。"
+                       "3,200 已在游戏内验证，其余阈值来自社区资料。"
+                       "游戏可能要等到支援关系开启后才会显示数值。"
+                       "对话记录中的 C、B、A 等表示已记录的支援对话等级。"
                   ).pack(side="bottom", fill="x", anchor="w", padx=(12, 0), pady=(10, 0))
 
         body = ttk.Frame(main, style="Card.TFrame", padding=(12, 10))
@@ -1353,7 +1351,7 @@ class App(AdvancedMixin, tk.Tk):
 
         acts = ttk.Frame(body, style="Card.TFrame")
         acts.pack(side="bottom", fill="x", pady=(8, 0))
-        ttk.Label(acts, text='标记对话为已观看：', style="Card.TLabel").pack(side="left")
+        ttk.Label(acts, text='将对话设为已确认：', style="Card.TLabel").pack(side="left")
         for r in ("C", "B", "A"):
             ttk.Button(acts, text=r, width=3, style="Small.TButton",
                        command=lambda rr=r: self.sup_set_rank(rr)).pack(side="left", padx=(6, 0))
@@ -1364,7 +1362,7 @@ class App(AdvancedMixin, tk.Tk):
 
         pts = ttk.Frame(body, style="Card.TFrame")
         pts.pack(side="bottom", fill="x", pady=(8, 0))
-        ttk.Label(pts, text='支援点数：', style="Card.TLabel").pack(side="left")
+        ttk.Label(pts, text='支援值：', style="Card.TLabel").pack(side="left")
         self.sup_pt_var = tk.StringVar(value="")
         self.sup_pt_spin = ttk.Spinbox(pts, from_=0, to=supports.max_points(), increment=50,
                                        width=8, textvariable=self.sup_pt_var,
@@ -1385,18 +1383,18 @@ class App(AdvancedMixin, tk.Tk):
                                       show="tree headings", selectmode="browse")
         self.sup_tree.heading("#0", text='支援对象', anchor="w")
         self.sup_tree.heading("jp", text='日文', anchor="w")
-        self.sup_tree.heading("points", text='点数', anchor="e")
-        self.sup_tree.heading("lv", text='等级', anchor="center")
-        self.sup_tree.heading("next", text='下一等级点数', anchor="e")
-        self.sup_tree.heading("max", text='最高', anchor="center")
-        self.sup_tree.heading("seen", text='已观看对话', anchor="w")
+        self.sup_tree.heading("points", text='支援值', anchor="e")
+        self.sup_tree.heading("lv", text='支援LV', anchor="center")
+        self.sup_tree.heading("next", text='下级支援值阈值', anchor="e")
+        self.sup_tree.heading("max", text='最高对话等级', anchor="center")
+        self.sup_tree.heading("seen", text='已确认的对话', anchor="w")
         self.sup_tree.heading("party", text='在队伍中', anchor="center")
         self.sup_tree.column("#0", width=180, minwidth=130)
         self.sup_tree.column("jp", width=140)
         self.sup_tree.column("points", width=64, anchor="e", stretch=False)
         self.sup_tree.column("lv", width=40, anchor="center", stretch=False)
         self.sup_tree.column("next", width=96, anchor="e", stretch=False)
-        self.sup_tree.column("max", width=50, anchor="center", stretch=False)
+        self.sup_tree.column("max", width=88, anchor="center", stretch=False)
         self.sup_tree.column("seen", width=160, stretch=False)
         self.sup_tree.column("party", width=74, anchor="center", stretch=False)
         self.sup_tree.container.pack(fill="both", expand=True)
@@ -1518,7 +1516,7 @@ class App(AdvancedMixin, tk.Tk):
             iids[jp] = iid
             n += 1
             first = first or iid
-        self.sup_count.configure(text=f"{n} 名角色" + ("（本存档中）" if party is not None else ""))
+        self.sup_count.configure(text=f"{n} 个单位" + ("（本存档中）" if party is not None else ""))
         target = iids.get(keep or "") or first
         if target:
             self.sup_char_tree.selection_set(target)
@@ -1527,7 +1525,7 @@ class App(AdvancedMixin, tk.Tk):
             self._sup_char = None
             self.sup_tree.delete(*self.sup_tree.get_children())
             self.sup_name.configure(text='没有可显示的内容')
-            self.sup_sub.configure(text="请打开存档，或取消“仅显示此存档中的角色”。")
+            self.sup_sub.configure(text="请打开存档，或取消“仅显示此存档中的单位”。")
 
     def on_support_char(self, _e=None):
         sel = self.sup_char_tree.selection() if hasattr(self, "sup_char_tree") else ()
@@ -1558,8 +1556,9 @@ class App(AdvancedMixin, tk.Tk):
             if got:
                 seen_pairs += 1
             pts = pa["points"]
+            partner_name = self._support_name(pa["jp"], pa["en"])
             iid = self.sup_tree.insert(
-                "", "end", text=self._support_name(pa["jp"], pa["en"]),
+                "", "end", text=partner_name,
                 values=(pa["jp"],
                         "—" if pts is None else f"{pts:,}",
                         "—" if pts is None else supports.level_of(pts),
@@ -1568,7 +1567,7 @@ class App(AdvancedMixin, tk.Tk):
                         ", ".join(got) if got else "—",
                         "✓" if ("PID_" + pa["jp"]) in party else ""),
                 tags=("sup_seen",) if (got or pts) else ("sup_none",))
-            self._sup_pairs[iid] = ({"a_en": en, "b_en": pa["en"]},
+            self._sup_pairs[iid] = ({"a_en": en, "b_en": partner_name},
                                     dict(pa["chart"].get("flags") or {}))
             if pa["hash"] is not None:
                 self._sup_pt[iid] = (pa["hash"], pts, pa["jp"])
@@ -1576,7 +1575,7 @@ class App(AdvancedMixin, tk.Tk):
         self._paint_support_tags()
         best = max((pa["points"] or 0) for pa in plist) if plist else 0
         self.sup_sub.configure(
-            text=f"{len(plist)} 组支援 · 最高 {best:,} 点 · 本存档已记录 {seen_pairs} 组对话")
+            text=f"{len(plist)} 组支援 · 最高支援值 {best:,} · 本存档已记录 {seen_pairs} 组对话")
         if iids:
             # keep every partner that was selected (an edit rebuilds the list
             # and re-sorts it by points), else the remembered one, else the top
@@ -1595,7 +1594,7 @@ class App(AdvancedMixin, tk.Tk):
         if pts is None:
             return "—"
         nxt = supports.next_level_at(pts)
-        return "max" if nxt is None else f"{nxt:,}"
+        return "已满级" if nxt is None else f"{nxt:,}"
 
     def on_support_pair(self, _e=None):
         """Mirror the selected pair's points into the editor row."""
@@ -1620,8 +1619,8 @@ class App(AdvancedMixin, tk.Tk):
         self.sup_pt_var.set("" if pts is None else str(pts))
         name = self.sup_tree.item(sel[0], "text")
         self.sup_pt_lbl.configure(
-            text=(f"{name}：{pts:,} / {supports.max_points():,} 点 · "
-                  f"等级 {supports.level_of(pts)}"
+            text=(f"{name}：支援值 {pts:,} / {supports.max_points():,} · "
+                  f"支援LV {supports.level_of(pts)}"
                   + (f"，下一等级 {supports.next_level_at(pts):,}"
                      if supports.next_level_at(pts) else "（满级）"))
             if pts is not None else f"{name}：此存档中没有记录")
@@ -1841,7 +1840,7 @@ class App(AdvancedMixin, tk.Tk):
         self.refresh_core_pages()
         self.refresh_mounts()
         self._update_dirty()
-        self.flash(f"已打开 {os.path.basename(path)} —— {self._visible_units()} 名角色。")
+        self.flash(f"已打开 {os.path.basename(path)} —— {self._visible_units()} 个单位。")
 
     def _update_file_label(self):
         if not self.sv:
@@ -2161,7 +2160,7 @@ class App(AdvancedMixin, tk.Tk):
         self._shown = {}
         self._skill_rows = []
         self.avatar.show("")
-        self.unit_name.configure(text="未选择角色" if self.sv else "未打开存档文件夹")
+        self.unit_name.configure(text="未选择单位" if self.sv else "未打开存档文件夹")
         self.unit_sub.configure(text="" if self.sv else "请先打开存档文件夹。")
         self.copies_chip.configure(text="")
         self.sync_btn.pack_forget()
@@ -2196,7 +2195,7 @@ class App(AdvancedMixin, tk.Tk):
         self.avatar.show(u.name, u.pid)
         self.unit_name.configure(text=u.name)
         pid = u.pid.replace("PID_", "")
-        self.unit_sub.configure(text=f"{u.job}   ·   等级 {u.level}   ·   {pid}")
+        self.unit_sub.configure(text=f"{u.job}   ·   LV {u.level}   ·   {pid}")
         # what the form shows; a field only writes when it differs from this, so
         # tabbing through fields never copies untouched values into other slots
         self._shown = {"lvl": u.level, "exp": u.exp, **dict(enumerate(u.stats))}
@@ -2254,7 +2253,7 @@ class App(AdvancedMixin, tk.Tk):
             return
         v = self._num(self.lvl_var, 1, 99)
         if v is None:
-            return self._bad_input(self.lvl_var, 1, 99, u.level, "等级")
+            return self._bad_input(self.lvl_var, 1, 99, u.level, "LV")
         if v == self._shown.get("lvl"):
             return
         self._shown["lvl"] = v
@@ -2267,9 +2266,9 @@ class App(AdvancedMixin, tk.Tk):
         n, s = self._edit_units(fn)
         if n:
             self._tree_lv(u.uid, v)
-            self.unit_sub.configure(text=f"{u.job}   ·   等级 {v}   ·   {u.pid.replace('PID_', '')}")
+            self.unit_sub.configure(text=f"{u.job}   ·   LV {v}   ·   {u.pid.replace('PID_', '')}")
             self._update_copies_chip(u)
-            self.flash(f"{u.name}：等级 → {v}（{self._where(n, s)}）")
+            self.flash(f"{u.name}：LV → {v}（{self._where(n, s)}）")
 
     def commit_exp(self):
         u = self._current()
@@ -2277,7 +2276,7 @@ class App(AdvancedMixin, tk.Tk):
             return
         v = self._num(self.exp_var, 0, 99)
         if v is None:
-            return self._bad_input(self.exp_var, 0, 99, u.exp, "经验")
+            return self._bad_input(self.exp_var, 0, 99, u.exp, "EXP")
         if v == self._shown.get("exp"):
             return
         self._shown["exp"] = v
@@ -2291,7 +2290,7 @@ class App(AdvancedMixin, tk.Tk):
         self.exp_bar.set(min(v, 100) / 100)
         if n:
             self._update_copies_chip(u)
-            self.flash(f"{u.name}：经验 → {v}（{self._where(n, s)}）")
+            self.flash(f"{u.name}：EXP → {v}（{self._where(n, s)}）")
 
     def commit_stat(self, i: int):
         u = self._current()
@@ -2376,7 +2375,7 @@ class App(AdvancedMixin, tk.Tk):
         inv = u.inventory(bytes(self.sv.payload))
         names = item_ids()
         if inv is None:
-            tree.insert("", "end", iid="none", text="  未找到此角色的道具列表",
+            tree.insert("", "end", iid="none", text="  未找到此单位的道具列表",
                         tags=("empty",))
             self._inv_lock()
             return
@@ -2432,7 +2431,7 @@ class App(AdvancedMixin, tk.Tk):
                 sv._core_cache = None
                 changed = True
         if not changed:
-            self.flash("没有更改——该角色在这个存档里没有这个道具栏。", "warn")
+            self.flash("没有更改——该单位在这个存档里没有这个道具栏。", "warn")
             return
         self._touch(self._targets())
         self.refresh_inventory()
@@ -2441,7 +2440,7 @@ class App(AdvancedMixin, tk.Tk):
     def add_item(self):
         u = self._current()
         if u is None:
-            self.flash("请先选择一个角色。", "warn")
+            self.flash("请先选择一个单位。", "warn")
             return
         new_id = self.inv_picker.selected()
         if new_id is None:
@@ -2504,7 +2503,7 @@ class App(AdvancedMixin, tk.Tk):
         u = self._current()
         sel = self.class_tree.selection()
         if not u or not sel:
-            self.flash("请先在列表中选择一个职业。", "warn")
+            self.flash("请先在列表中选择一个兵种。", "warn")
             return
         if self._read_only():
             return
@@ -2516,9 +2515,9 @@ class App(AdvancedMixin, tk.Tk):
         n = len(self._targets())
         scope = f"此线路的 {n} 个存档" if n > 1 else "此槽位"
         if not messagebox.askyesno(
-                "更改职业",
+                "更改兵种",
                 f"将 {u.name} 从 {u.job} 改为 {name}（{scope}）？\n\n"
-                "只写入职业编号，不会重新计算移动力、可用武器、职业技能和最大生命值。"
+                "只写入兵种编号，不会重新计算移动力、可用武器、兵种技能和最大HP。"
                 "保存之前不会写入磁盘。",
                 parent=self):
             return
@@ -2529,7 +2528,7 @@ class App(AdvancedMixin, tk.Tk):
                 ids += hit
                 touched.append(sv)
         self._touch(touched)
-        self.flash(f"{u.name}：职业 → {name}（{ids} 处记录，{len(touched)} 个槽位）")
+        self.flash(f"{u.name}：兵种 → {name}（{ids} 处记录，{len(touched)} 个槽位）")
         self.show_unit()
 
     # ========================================================== convoy
@@ -2561,8 +2560,8 @@ class App(AdvancedMixin, tk.Tk):
             salvage = layer.salvage_convoy(bytes(self.sv.payload))
         if conv is None:
             tree.insert("", "end", iid="none",
-                        text="  此槽位的仓库列表已损坏——见上方说明" if salvage
-                        else "  此槽位中没有仓库列表", tags=("empty",))
+                        text="  此槽位的道具袋列表已损坏——见上方说明" if salvage
+                        else "  此槽位中没有道具袋列表", tags=("empty",))
         total = len(self._conv_rows)
         self.conv_count.configure(text="" if conv is None else
                                   f"{total} 件道具 · {conv.slots} 个槽位" if shown == total
@@ -2570,8 +2569,8 @@ class App(AdvancedMixin, tk.Tk):
         if salvage:
             n_items = sum(1 for sl in salvage[1] if sl.item)
             self.conv_problem_lbl.configure(
-                text="⚠ 此存档的仓库列表已损坏：旧版本的“添加”把道具直接写在空槽位上，"
-                     "导致其后的列表错位，游戏无法读取。“修复仓库”会把它重建为干净的 "
+                text="⚠ 此存档的道具袋列表已损坏：旧版本的“添加”把道具直接写在空槽位上，"
+                     "导致其后的列表错位，游戏无法读取。“修复道具袋”会把它重建为干净的 "
                      f"{salvage[0]} 槽位列表，并保留仍能找到的 {n_items} 件道具。"
                      "撤销可用，原始文件保留在槽位的 .bak 中。")
             self.conv_repair_btn.pack(anchor="w", pady=(6, 0))
@@ -2586,19 +2585,19 @@ class App(AdvancedMixin, tk.Tk):
     def repair_convoy_ui(self):
         got = layer.salvage_convoy(bytes(self.sv.payload)) if self.sv else None
         if not got:
-            self.flash("此槽位的仓库不需要修复。")
+            self.flash("此槽位的道具袋不需要修复。")
             return
         n_items = sum(1 for sl in got[1] if sl.item)
         if not messagebox.askyesno(
-                "修复仓库",
-                f"将此槽位的仓库重建为 {got[0]} 个槽位的干净列表，保留找到的 "
+                "修复道具袋",
+                f"将此槽位的道具袋重建为 {got[0]} 个槽位的干净列表，保留找到的 "
                 f"{n_items} 件道具？\n\n保存之前不会写入磁盘，可以撤销，"
                 "原始文件保留在槽位的 .bak 中。",
                 parent=self):
             return
         if self._core_edit(lambda f: (layer.repair_convoy(f.payload) >= 0 and f.payload) or None,
-                           "修复仓库"):
-            self.flash(f"仓库已修复：{n_items} 件道具、{got[0]} 个槽位——按 Ctrl+S 写入。",
+                           "修复道具袋"):
+            self.flash(f"道具袋已修复：{n_items} 件道具、{got[0]} 个槽位——按 Ctrl+S 写入。",
                        "ok")
         self.refresh_convoy()
 
@@ -2647,7 +2646,7 @@ class App(AdvancedMixin, tk.Tk):
     def replace_convoy(self, iid: int):
         slots = self._conv_selected()
         if len(slots) != 1:
-            self.flash("请选择一个要替换的仓库行。", "warn")
+            self.flash("请选择一个要替换的道具袋行。", "warn")
             return
         row = self._conv_row(slots[0])
         if row.iid == iid:
@@ -2656,13 +2655,13 @@ class App(AdvancedMixin, tk.Tk):
         old = item_label(row.iid)
         n = self._convoy_edit(slots, lambda p, r: set_convoy_item(p, r, iid))
         self.refresh_convoy(select=slots)
-        self.flash(f"仓库槽位 {slots[0] + 1}：{old} → {item_label(iid)}"
+        self.flash(f"道具袋槽位 {slots[0] + 1}：{old} → {item_label(iid)}"
                    + (f"，共 {n} 个存档" if n > 1 else ""))
 
     def set_convoy_qty(self):
         slots = self._conv_selected()
         if not slots:
-            self.flash("请先选择一个仓库行。", "warn")
+            self.flash("请先选择一个道具袋行。", "warn")
             return
         qty = self._qty()
         if qty is None:
@@ -2676,7 +2675,7 @@ class App(AdvancedMixin, tk.Tk):
                 if not self._core_edit(
                         lambda f, i=iid: (layer.set_convoy_copies(f.payload, i, qty)
                                           and f.payload) or None,
-                        f"Convoy: {item_label(iid)} ×{qty} (one slot per copy)"):
+                        f"道具袋：{item_label(iid)} ×{qty}（每件一槽）"):
                     break
             slots = [s for s in slots if self._conv_row(s) and layer.stacks(self._conv_row(s).iid)]
             if not slots:
@@ -2706,7 +2705,7 @@ class App(AdvancedMixin, tk.Tk):
 
     def find_gold(self):
         """Gone: gold has a fixed address."""
-        self.flash("金钱直接从存档读取——无需搜索。", "info")
+        self.flash("金币直接从存档读取——无需搜索。", "info")
 
 
     def on_gold_pick(self, _e=None):
@@ -2728,7 +2727,7 @@ class App(AdvancedMixin, tk.Tk):
         touched = [sv for sv in self._targets() if write_gold(sv.payload, val)]
         self._touch(touched)
         self.locate_gold()
-        self.flash(f"金钱 → {val:,}" + (f"，共 {len(touched)} 个槽位" if len(touched) > 1 else ""))
+        self.flash(f"金币 → {val:,}" + (f"，共 {len(touched)} 个槽位" if len(touched) > 1 else ""))
 
 
     def _set_gold_auto(self):

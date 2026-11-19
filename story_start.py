@@ -54,14 +54,14 @@ TARGETS = {4: CHAPTERS, 1: tuple(CAI_DATES), 2: DIETRICH_CHAPTERS, 3: tuple(THEO
 TESTED_BY_ROUTE = {4: TESTED, 1: frozenset(CAI_DATES),
                    2: frozenset(DIETRICH_CHAPTERS), 3: frozenset(THEODORA_DATES)}
 THEODORA_REPAIRS = {
-    4: 'Arena gate and progression passed with middle movement enabled',
-    6: 'Progression passed via alternate city route; NPC barrier may remain',
-    8: 'NPC barrier cleared and progression passed with city movement enabled',
-    9: 'Troy exit and progression passed with three map points shown',
+    4: '开放中层通行后，已验证可进入斗技场并继续推进',
+    6: '已验证可从城内绕行，NPC 路障可能仍在',
+    8: '开放城市通行后，NPC 路障已解除，剧情可继续',
+    9: '显示三个地图点后，已验证可从特洛伊亚之祠继续推进',
 }
 DIETRICH_BLOCKERS = {
-    1: 'Battle works, but leads into the Chapter 2 rescue block',
-    2: 'Replay cannot progress the rescue proximity event',
+    1: '可进行战斗，随后会卡在第2章的救援目标',
+    2: '重玩时无法触发接近救援目标的事件',
 }
 RESUME_OFFSET = 58
 FREE_TIME_ID = 0xd8588d186b3f9502
@@ -74,20 +74,20 @@ DATA_KEY=core.fnv1_32(b'Data')
 
 def one_block(f,name):
     hits=[b for b in f.blocks if b.name==name]
-    if len(hits)!=1:raise core.SaveError('Expected one '+name)
+    if len(hits)!=1:raise core.SaveError('无法唯一识别数据块：'+name)
     return hits[0]
 
 
 def members(f,tree,at,keys):
     index=tree.node_at(at)
-    if index<0 or not tree.nodes[index].struct:raise core.SaveError('Expected a restart struct')
+    if index<0 or not tree.nodes[index].struct:raise core.SaveError('无法识别重开数据的结构。')
     node=tree.nodes[index];table=f.ptr(at);count=f.u32(at)>>24
-    if count!=len(keys) or table+8*count!=node.end:raise core.SaveError('Unknown restart member layout')
+    if count!=len(keys) or table+8*count!=node.end:raise core.SaveError('重开数据的成员结构未知。')
     rows=[(f.u32(table+8*i),f.ptr(table+8*i+4)) for i in range(count)]
     if set(k for k,v in rows)!=keys or len({v for k,v in rows})!=count:
-        raise core.SaveError('Missing or duplicate restart members')
+        raise core.SaveError('重开数据存在缺失或重复成员。')
     if set(v for k,v in rows)!={n.start for n in tree.nodes if n.parent==index}:
-        raise core.SaveError('Unexpected restart children')
+        raise core.SaveError('重开数据的子项结构异常。')
     return dict(rows)
 
 
@@ -95,7 +95,7 @@ def restart_leaves(f):
     tree=f.tree();block=one_block(f,'GameRestartData')
     slots=members(f,tree,block.start,RESTART_KEYS)
     if f.payload[block.start+4:block.start+8]!=b'\x03\0\0\0':
-        raise core.SaveError('Unknown restart version/prefix')
+        raise core.SaveError('重开数据的版本或前缀未知。')
     leaves=[]
     for at in slots.values():
         fields=members(f,tree,at,{HEADER_KEY,DATA_KEY})
@@ -103,19 +103,19 @@ def restart_leaves(f):
             index=tree.node_at(start)
             node=tree.nodes[index]
             if node.struct or any(n.parent==index for n in tree.nodes):
-                raise core.SaveError('Unexpected restart blob structure')
+                raise core.SaveError('重开记录的数据结构异常。')
             body=bytes(f.payload[start+4:node.end])
             if len(body)<4 or int.from_bytes(body[:4],'little')!=len(body)-4:
-                raise core.SaveError('Invalid restart blob length')
+                raise core.SaveError('重开记录的数据长度无效。')
             data=body[4:]
             if key==HEADER_KEY and len(data) not in (0,256):
-                raise core.SaveError('Unknown restart Header size')
+                raise core.SaveError('重开记录的 Header 长度未知。')
             if data and any(data):
                 if len(data)<32 or int.from_bytes(data[:4],'little')!=core.MAGIC:
-                    raise core.SaveError('Unknown restart blob encoding')
+                    raise core.SaveError('重开记录的编码未知。')
                 size,checksum,kind=struct.unpack_from('<III',data,4)
                 if kind!=1 or size+32!=len(data) or core.fnv1_32(data[32:])!=checksum:
-                    raise core.SaveError('Invalid embedded restart container')
+                    raise core.SaveError('内嵌重开存档无效。')
             leaves.append(start)
     return sorted(leaves)
 
@@ -152,37 +152,37 @@ PART3_DATES = {1: (1, 24, 8, 0), 2: (2, 1, 12, 0), 3: (2, 16, 12, 0),
 
 def chapters_for(route, part=1):
     if type(part) is not int or type(route) is not int:
-        raise story.StoryError('Unsupported story route or part.')
+        raise story.StoryError('不支持此剧情路线或部数。')
     if part == 3 and route == 9:
         return tuple(ch for ch in story.PART3_CHAPTERS if ch != 1)
     if part == 2 and route in story.PREFIXES:
         return story.PART2_CHAPTERS
     if part == 1 and route in TARGETS:
         return TARGETS[route]
-    raise story.StoryError('Unsupported story route or part.')
+    raise story.StoryError('不支持此剧情路线或部数。')
 
 
 def target(chapter, route=4, part=1):
     if part == 3:
         story.sequence(chapter, route, part)
         if chapter == 1:
-            raise story.StoryError('Part 3 Chapter 1 replay is unavailable. Start it through the Obelisk door instead.')
+            raise story.StoryError('救世篇第1区分暂不可重玩，请通过方尖塔大厅的门进入。')
         return PART3_DATES[chapter]
     if part == 2:
         story.sequence(chapter, route, part)
         return PART2_DATES[chapter]
     if type(part) is not int or part != 1:
-        raise story.StoryError('Unsupported story part.')
+        raise story.StoryError('不支持此剧情部数。')
     if type(route) is not int or route not in TARGETS:
-        raise story.StoryError('Story editing supports Leda, Cai, Dietrich and Theodora Part 1 only.')
+        raise story.StoryError('第1部剧情进度仅支持蕾达、凯伊、迪托利希和赛奥朵拉的路线。')
     if type(chapter) is not int or chapter not in TARGETS[route]:
         if route == 2:
-            raise story.StoryError('Choose a Dietrich Part 1 chapter from 3 to 12. Chapters 1 and 2 are unavailable because the Chapter 2 rescue cannot be progressed on replay.')
+            raise story.StoryError('请选择迪托利希第1部的第3至12章。重玩会卡在第2章的救援目标，因此第1、2章均不可选。')
         if route == 1:
-            raise story.StoryError('Choose a Cai Part 1 chapter from 1 to 12.')
+            raise story.StoryError('请选择凯伊第1部的第1至12章。')
         if route == 3:
-            raise story.StoryError('Choose a Theodora Part 1 chapter from 1 to 12.')
-        raise story.StoryError('Choose a Leda Part 1 chapter from 2 to 12. Chapter 1 is unavailable because its first objective cannot be progressed.')
+            raise story.StoryError('请选择赛奥朵拉第1部的第1至12章。')
+        raise story.StoryError('请选择蕾达第1部的第2至12章。第1章的首个目标无法继续，因此不可选。')
     return {1: CAI_DATES, 2: DIETRICH_DATES, 3: THEODORA_DATES, 4: ENTRY_DATES}[route][chapter]
 
 
@@ -193,24 +193,24 @@ def validate(f):
     header = one_block(f, 'Header')
     mode = bytes(f.payload[header.start+20:header.start+22])
     if mode not in (b'\x12\x05', b'\x10\x0b'):
-        raise story.StoryError('Story editing needs a supported free-time or chapter-start save. Battle and unknown resume states are read-only.')
+        raise story.StoryError('请使用支持的自由行动或章节开始存档。战斗存档及恢复状态未知的存档只读。')
     info = story.require_supported(f)
     resume = struct.unpack_from('<Q', f.payload, info.user+RESUME_OFFSET)[0]
     if (mode, resume) not in ((b'\x12\x05', FREE_TIME_ID), (b'\x10\x0b', CHECKPOINT_ID)):
-        raise story.StoryError('Story editing needs a supported free-time or chapter-start save. Battle and unknown resume states are read-only.')
+        raise story.StoryError('请使用支持的自由行动或章节开始存档。战斗存档及恢复状态未知的存档只读。')
     schedule = one_block(f, 'GameSchedule')
     calendar = one_block(f, 'Calendar')
     if schedule.end-schedule.start != 24 or f.payload[schedule.start+4] != 1:
-        raise story.StoryError('Unknown GameSchedule layout; no chapter changes allowed.')
+        raise story.StoryError('无法识别 GameSchedule 数据结构，无法更改章节。')
     if calendar.end-calendar.start != 16 or f.payload[calendar.start+4] != 6:
-        raise story.StoryError('Unknown Calendar layout; no chapter changes allowed.')
+        raise story.StoryError('无法识别 Calendar 数据结构，无法更改章节。')
     clock = bytes(f.payload[schedule.start+5:schedule.start+12])
     if clock != bytes(f.payload[info.header+22:info.header+29]):
-        raise story.StoryError('Header and schedule clocks disagree; no chapter changes allowed.')
+        raise story.StoryError('存档头与日程时间不一致，无法更改章节。')
     try:
         datetime(*struct.unpack('<H5B', clock))
     except ValueError as exc:
-        raise story.StoryError('Invalid source calendar date; no chapter changes allowed.') from exc
+        raise story.StoryError('原始存档的游戏日期无效，无法更改章节。') from exc
     restart_leaves(f)  # Validate every cached blob before applying any change.
     return info
 
@@ -258,13 +258,13 @@ def _edited_at_entry(f, chapter, year, date):
     after = normalized_blocks(result)
     allowed = {'Header', 'GameUserData', 'GameSchedule', 'Calendar', 'GameRestartData'}
     if original.keys() != after.keys() or any(original[n] != after[n] for n in original.keys()-allowed):
-        raise story.StoryError('An unrelated object changed; the chapter edit was refused.')
+        raise story.StoryError('修改会改变无关数据，已拒绝更改章节。')
     user = bytearray(original['GameUserData'])
     user[9] = chapter
     struct.pack_into('<Q', user, 85, story.sequence(chapter, info.route, info.part))
     struct.pack_into('<Q', user, 4+RESUME_OFFSET, CHECKPOINT_ID)
     if bytes(user) != after['GameUserData'] or check.chapter != chapter:
-        raise story.StoryError('Unexpected player or flag changes; the chapter edit was refused.')
+        raise story.StoryError('修改会意外改变玩家数据或标记，已拒绝更改章节。')
     return p
 
 
@@ -272,7 +272,7 @@ def repair_part2_chapter5(f):
     """Shared A30 gate repair; all four routes reached the Chapter 5 battle."""
     info = validate(f)
     if info.route not in story.PREFIXES or (info.part, info.chapter) != (2, 5):
-        raise story.StoryError('The temple-access repair requires Part 2 Chapter 5.')
+        raise story.StoryError('神殿通行修复仅适用于战争篇第5章。')
     return facilities.edited(f, {PART2_UPPER_MOVEMENT: True})
 
 
@@ -280,7 +280,7 @@ def repair_part2_chapter6(f):
     """Clear only middle-city movement; Theodora's manual repair reached battle."""
     info = validate(f)
     if info.route not in story.PREFIXES or (info.part, info.chapter) != (2, 6):
-        raise story.StoryError('The midtown-access repair requires Part 2 Chapter 6.')
+        raise story.StoryError('中层通行修复仅适用于战争篇第6章。')
     return facilities.edited(f, {PART2_MIDDLE_MOVEMENT: True})
 
 
@@ -293,7 +293,7 @@ def enter_part2(f):
     """
     info = validate(f)
     if info.route not in story.PREFIXES or info.part != 1:
-        raise story.StoryError('Start this experiment from a supported Part 1 free-time or chapter-start save.')
+        raise story.StoryError('请从支持的第1部自由行动或章节开始存档尝试进入战争篇。')
     original = normalized_blocks(f)
     p = bytearray(f.payload)
     for part_at, chapter_at, seq_at in ((info.header+13, info.header+14, info.header+45),
@@ -304,13 +304,13 @@ def enter_part2(f):
     after = normalized_blocks(result)
     allowed = {'Header','GameUserData','GameSchedule','Calendar','GameRestartData'}
     if original.keys() != after.keys() or any(original[n] != after[n] for n in original.keys()-allowed):
-        raise story.StoryError('Unexpected changes during Part 2 entry; no changes applied.')
+        raise story.StoryError('进入战争篇时检测到意外改动，已拒绝应用。')
     expected = bytearray(original['GameUserData'])
     expected[8:10] = bytes((2, 1))
     struct.pack_into('<Q', expected, 85, story.sequence(1, info.route, 2))
     struct.pack_into('<Q', expected, 4+RESUME_OFFSET, CHECKPOINT_ID)
     if expected != after['GameUserData']:
-        raise story.StoryError('Part 2 entry unexpectedly changed player data or flags.')
+        raise story.StoryError('进入战争篇会意外改变玩家数据或标记，已拒绝应用。')
     return bytearray(result.payload)
 
 

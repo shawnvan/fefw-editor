@@ -38,7 +38,7 @@ def catalog():
                 aliases[a] = h
         return entries
     except (OSError, KeyError, ValueError, TypeError) as exc:
-        raise core.SaveError(f'Cannot load recruit catalogue: {exc}') from exc
+        raise core.SaveError(f'无法读取可添加单位的目录：{exc}') from exc
 
 
 @lru_cache(maxsize=1)
@@ -98,15 +98,15 @@ def require_context(f):
     info = story.read(f)
     if not ((info.part in (1, 2) and info.route in (1, 2, 3, 4))
             or (info.part == 3 and info.route == 9)):
-        raise core.SaveError('Unit creation/renumbering supports the four Part 1/2 routes and Eshmel Part 3.')
+        raise core.SaveError('添加单位或修改编号支持四位主角的第1、2部，以及伊修玛尔的第3部救世篇。')
     kind=context(f, info)
     if kind == 'mid-battle':
-        raise core.SaveError('Adding or restoring units during a battle is disabled: added reserves did not become available in game. Use a pre-battle, free-time or chapter-start save.')
+        raise core.SaveError('测试中，战斗期间添加的后备单位未在游戏内出现。请使用出击准备、自由行动或章节开始存档添加或恢复单位。')
     if kind == 'world-map':
-        raise core.SaveError('World-map battle state is not supported for Add Unit. Use a normal pre-battle, free-time or chapter-start save.')
+        raise core.SaveError('世界地图战斗状态下无法添加单位。请使用常规出击准备、自由行动或章节开始存档。')
     if kind not in ('free-time', 'pre-battle', 'chapter-start'):
-        raise core.SaveError('This save context is not supported for unit creation.')
-    if f.block('UnitPool') is None: raise core.SaveError('No live unit pool.')
+        raise core.SaveError('当前存档状态不支持添加单位。')
+    if f.block('UnitPool') is None: raise core.SaveError('找不到当前单位记录区。')
     # Also validates the supported live flag store before touching any record.
     recruitment_map(f)
     return info
@@ -136,36 +136,36 @@ def _unit_gear(f, u):
     """
     p=f.payload; cur=f.ptr(u.start+72)
     if cur < u.start+76 or cur+8>u.end:
-        raise core.SaveError('Unknown unit mastery layout.')
+        raise core.SaveError('无法识别单位的技能字段结构。')
     cur+=8
     for _ in range(7):
         nxt=f.ptr(cur)
-        if not cur+4<=nxt<=u.end: raise core.SaveError('Unknown unit skill layout.')
+        if not cur+4<=nxt<=u.end: raise core.SaveError('无法识别单位的战技或特技列表结构。')
         cur=nxt
-    if cur+3>=u.end or p[cur]!=35: raise core.SaveError('Unknown unit equipment version.')
+    if cur+3>=u.end or p[cur]!=35: raise core.SaveError('无法识别单位的装备记录版本。')
     ride_at=cur+1
     if p[ride_at]==0: ride=None;cur=ride_at+1
     else:
         ride,cur=core.Ride.read(p,ride_at,u.end)
-        if ride is None: raise core.SaveError('Unknown unit mount.')
+        if ride is None: raise core.SaveError('无法识别单位的坐骑记录。')
     legion_at=cur;legion=None
     if p[cur]==0:cur+=1
     elif p[cur]==1 and cur+17<u.end:
         legion=core.Legion(p[cur+1],p[cur+2],struct.unpack_from('<Q',p,cur+9)[0]);cur+=17
-    else:raise core.SaveError('Unknown unit battalion.')
+    else:raise core.SaveError('无法识别单位的军团兵记录。')
     if p[u.start+5]==1:
         at=(cur+3)&~3
-        if any(p[cur:at]) or at+5>=u.end:raise core.SaveError('Unknown battle-state alignment.')
+        if any(p[cur:at]) or at+5>=u.end:raise core.SaveError('无法识别战斗状态的数据对齐方式。')
         end=f.ptr(at)
         if not at+5<end<u.end-12 or p[at+4]!=9:
-            raise core.SaveError('Unknown unit battle-state object.')
+            raise core.SaveError('无法识别单位的战斗状态记录。')
         number_at=end+1
     else:
         number_at=cur+1
     if (number_at+10>=u.end or p[number_at-1]!=0
             or p[number_at+1:number_at+3]!=b'\0\3'
             or p[number_at+9] not in (33,65)):
-        raise core.SaveError('Unknown unit identity layout.')
+        raise core.SaveError('无法识别单位的身份字段结构。')
     return core.Gear(p[number_at],ride_at,legion_at-ride_at,ride,
                      legion_at,cur-legion_at,legion)
 
@@ -174,35 +174,35 @@ def _pool_groups(f):
     """Decode counted player, reserve and opponent lists without merging them."""
     pool=f.block('UnitPool')
     if pool is None or f.payload[pool.start+4]!=0:
-        raise core.SaveError('Unrecognised live unit pool.')
+        raise core.SaveError('无法识别当前单位记录区。')
     tree=f.tree();at=pool.start+5;groups=[];seen=set()
     while at<pool.end:
         kind=f.payload[at]
         if kind==255:
             if bytes(f.payload[at:pool.end])!=b'\xff'+bytes(pool.end-at-1) or pool.end-at>4:
-                raise core.SaveError('Unexpected data after the live unit pool.')
+                raise core.SaveError('当前单位记录区后有未知数据。')
             return groups
         if kind not in (0,1,3,4,6,7) or kind in seen or at+3>pool.end:
-            raise core.SaveError('Unknown or duplicate unit-pool group.')
+            raise core.SaveError('当前单位记录区中有未知或重复的分组。')
         seen.add(kind);count=f.u16(at+1);start=(at+6)&~3
-        if any(f.payload[at+3:start]):raise core.SaveError('Unknown unit-pool padding.')
+        if any(f.payload[at+3:start]):raise core.SaveError('当前单位记录区的填充数据未知。')
         cursor=start;rows=[]
         for _ in range(count):
-            if cursor+84>pool.end:raise core.SaveError('Truncated live unit pool.')
+            if cursor+84>pool.end:raise core.SaveError('当前单位记录区不完整。')
             end=f.ptr(cursor)
             if (not cursor+84<=end<=pool.end or end%4 or tree.node_at(cursor)<0
                     or f.payload[cursor+4]!=36 or f.payload[cursor+5] not in (0,1)):
-                raise core.SaveError('Unknown or incomplete unit record.')
+                raise core.SaveError('存在无法识别或不完整的单位记录。')
             u=core.SaveUnit.read(f,cursor);rows.append((u,_unit_gear(f,u)));cursor=end
         groups.append((kind,at,cursor,rows));at=cursor
-    raise core.SaveError('Missing live unit-pool terminator.')
+    raise core.SaveError('找不到当前单位记录区的结束标记。')
 
 
 def pool_groups(f):
     try:
         return _pool_groups(f)
     except (IndexError, struct.error) as exc:
-        raise core.SaveError('Truncated or malformed unit-pool records; nothing changed.') from exc
+        raise core.SaveError('单位记录不完整或格式异常，已拒绝修改。') from exc
 
 
 def roster(f):
@@ -232,12 +232,24 @@ def status(f, person, rows=None, values=None):
     return row['restriction'] or 'Not present — add level 1'
 
 
+def status_label(state):
+    labels = {
+        'Duplicate character records — review required': '有重复的单位记录，需核对',
+        'Alternate record exists — review required': '已有变体记录，需核对',
+        'Already in party': '已在队伍中',
+        'Existing inactive record — restore recruitment': '已有未加入记录，可恢复加入状态',
+        'Existing record — recruitment state needs review': '已有单位记录，需核对加入状态',
+        'Not present — add level 1': '可添加为 LV 1 单位',
+    }
+    return labels.get(state, state)
+
+
 def _equipment_records(f):
     """Typed reference fields only: no raw-byte search/replace."""
     result=[]; seen=set()
     party=core.party_store(f)
     if party is None:
-        raise core.SaveError('The party equipment stores could not be identified.')
+        raise core.SaveError('无法识别队伍装备资源池。')
     for st in (party, core.reliquary_store(f)):
         if not st: continue
         for kind,at in (('ride',st[1]),('legion',st[2])):
@@ -245,20 +257,20 @@ def _equipment_records(f):
             seen.add(at)
             end=f.ptr(at)
             if end<at+7 or end>len(f.payload) or f.payload[at+4]!=0:
-                raise core.SaveError('Unknown equipment pool header.')
+                raise core.SaveError('装备资源池的头部结构未知。')
             count=f.u16(at+5); pos=at+7
             for _ in range(count):
-                if pos >= end: raise core.SaveError('Truncated equipment pool.')
+                if pos >= end: raise core.SaveError('装备资源池数据不完整。')
                 if f.payload[pos] == 0: pos+=1;continue
                 if kind=='ride':
                     obj,nxt=core.Ride.read(f.payload,pos,end)
-                    if obj is None: raise core.SaveError('Unknown mount record.')
+                    if obj is None: raise core.SaveError('无法识别坐骑记录。')
                     result.append((pos+9,obj.owner,obj.allies));pos=nxt
                 else:
-                    if f.payload[pos]!=1 or pos+17>end: raise core.SaveError('Unknown battalion record.')
+                    if f.payload[pos]!=1 or pos+17>end: raise core.SaveError('无法识别军团兵记录。')
                     result.append((pos+2,f.payload[pos+2],b''));pos+=17
             if end-pos>3 or any(f.payload[pos:end]):
-                raise core.SaveError('Unexpected trailing equipment data.')
+                raise core.SaveError('装备资源池末尾有未知数据。')
     return result
 
 
@@ -273,17 +285,17 @@ def _references(f, rows):
 def next_number(f):
     rows=roster(f)
     people=[canonical(u.person) for u,_ in rows]
-    if len(people)!=len(set(people)): raise core.SaveError('Existing duplicate character records must be reviewed first.')
+    if len(people)!=len(set(people)): raise core.SaveError('请先核对现有的重复单位记录。')
     all_rows=[row for _,_,_,group in pool_groups(f) for row in group]
     nums=[g.unit_number for _,g in all_rows]
-    if len(nums)!=len(set(nums)): raise core.SaveError('Existing duplicate unit numbers must be repaired first.')
+    if len(nums)!=len(set(nums)): raise core.SaveError('请先修复重复的单位编号。')
     refs=_references(f,all_rows)
     if any(allies for _,_,allies in refs):
-        raise core.SaveError('Mount affinity references are not yet mapped; allocating a new identity is disabled.')
+        raise core.SaveError('存档中的坐骑友好度引用尚未确认，无法分配新单位编号。')
     used=set(nums)|{owner for _,owner,_ in refs if owner not in (0,255)}
     # Do not recycle holes: other records may retain a historical identity.
     number=max(used,default=0)+1
-    if not MIN_NUMBER<=number<=MAX_NUMBER: raise core.SaveError('No supported unused unit number remains.')
+    if not MIN_NUMBER<=number<=MAX_NUMBER: raise core.SaveError('没有可用的空闲单位编号。')
     return number
 
 
@@ -294,7 +306,7 @@ def _recruit(f,row):
         fm=recruitment_map(work);h=core.id_hash(name)
         matches=[x for x in fm.flags if x.hash==h]
         if len(matches)>1 or (matches and (matches[0].wide or matches[0].value not in (0,1))):
-            raise core.SaveError('Unknown recruitment/met state; unchanged.')
+            raise core.SaveError('加入或会面状态未知，已拒绝修改。')
         if matches:
             work.payload[matches[0].offset]=1
         else:
@@ -331,18 +343,18 @@ def _record(row,number,at):
 
 def add(f,person):
     require_context(f)
-    if person not in catalog(): raise core.SaveError('Choose a catalogued recruit.')
+    if person not in catalog(): raise core.SaveError('请从目录中选择可添加的单位。')
     row=catalog()[person]
     if row['restriction']: raise core.SaveError(row['restriction'])
     existing=[u for u,_ in roster(f) if canonical(u.person)==person]
-    if existing: raise core.SaveError(status(f,person)+'. A second copy will not be added.')
+    if existing: raise core.SaveError(status_label(status(f, person)) + '，无法重复添加。')
     number=next_number(f)
     # Validate flags before constructing an appended record, preserving every old unit.
     work=_recruit(f,row);pool=work.block('UnitPool');tree=work.tree()
     groups=pool_groups(work);party=next((g for g in groups if g[0]==4),None)
     if party is None:
         # During tactical preparation, create the unfielded party list.
-        if context(work)!='pre-battle':raise core.SaveError('No supported party group.')
+        if context(work)!='pre-battle':raise core.SaveError('找不到受支持的队伍分组。')
         at=next((g[1] for g in groups if g[0]>4),pool.end-4)
         body=b'\4\1\0\0'+_record(row,number,at+4)
     else:
@@ -352,21 +364,21 @@ def add(f,person):
     result=core.SaveFile(new);rows=roster(result)
     old_ids=[(u.person,g.unit_number) for u,g in roster(work)]
     if [(u.person,g.unit_number) for u,g in rows if u.person!=person] != old_ids:
-        raise core.SaveError('Existing unit identities changed; nothing applied.')
+        raise core.SaveError('操作会意外改变现有单位身份，已拒绝修改。')
     if [(u.person,g.unit_number) for u,g in rows if u.person==person] != [(person,number)]:
-        raise core.SaveError('New unit did not read back.')
+        raise core.SaveError('无法读回新增单位，已拒绝修改。')
     return new
 
 
 def restore(f,person):
     require_context(f)
     if status(f,person) != 'Existing inactive record — restore recruitment':
-        raise core.SaveError('This record cannot be restored through the recruit action.')
+        raise core.SaveError('此记录无法通过招募操作恢复加入状态。')
     rows=roster(f)
     people=[canonical(u.person) for u,_ in rows]
-    if len(people)!=len(set(people)): raise core.SaveError('Existing duplicate character records must be reviewed first.')
+    if len(people)!=len(set(people)): raise core.SaveError('请先核对现有的重复单位记录。')
     nums=[g.unit_number for _,g in rows]
-    if len(nums)!=len(set(nums)): raise core.SaveError('Existing duplicate unit numbers must be repaired first.')
+    if len(nums)!=len(set(nums)): raise core.SaveError('请先修复重复的单位编号。')
     return _recruit(f,catalog()[person]).payload
 
 
@@ -374,28 +386,28 @@ def renumber(f,person,number):
     require_context(f)
     if (context(f) != 'free-time' or [g[0] for g in pool_groups(f)] != [4]
             or any(f.payload[u.start+4:u.start+8] != b'\x24\0\0\0' for u,_ in roster(f))):
-        raise core.SaveError('Renumbering requires a free-time party save; battle references are not rewritten.')
+        raise core.SaveError('请使用自由行动存档修改编号。战斗中的单位引用无法重写。')
     if type(number) is not int or not MIN_NUMBER<=number<=MAX_NUMBER:
-        raise core.SaveError('Unit number must be an integer from 1 to 254.')
+        raise core.SaveError('单位编号须为 1 至 254 的整数。')
     rows=roster(f);hits=[(u,g) for u,g in rows if u.person==person]
-    if len(hits)!=1: raise core.SaveError('No unique live character record.')
+    if len(hits)!=1: raise core.SaveError('找不到唯一的当前单位记录。')
     u,g=hits[0];old=g.unit_number
     if number==old:return bytearray(f.payload)
     if sum(canonical(v.person)==canonical(person) for v,_ in rows)>1:
-        raise core.SaveError('This character has multiple live records; review them before renumbering.')
-    if any(x.unit_number==number for _,x in rows): raise core.SaveError('That unit number is already used by another live unit.')
+        raise core.SaveError('此单位有多条当前记录，请核对后再修改编号。')
+    if any(x.unit_number==number for _,x in rows): raise core.SaveError('该编号已被另一单位使用。')
     refs=_references(f,rows)
     if any(allies for _,_,allies in refs):
-        raise core.SaveError('Mount affinity references are not yet mapped; renumbering this save is disabled.')
-    if any(owner==number for _,owner,_ in refs): raise core.SaveError('That number is still referenced by equipment.')
+        raise core.SaveError('此存档的坐骑友好度引用尚未确认，无法修改单位编号。')
+    if any(owner==number for _,owner,_ in refs): raise core.SaveError('该编号仍被装备记录引用。')
     if sum(x.unit_number==old for _,x in rows)>1 and any(owner==old for _,owner,_ in refs):
-        raise core.SaveError('Duplicate number has ambiguous equipment ownership; cannot renumber safely.')
+        raise core.SaveError('重复编号的装备归属不明，无法安全修改编号。')
     out=bytearray(f.payload);tail=core.tail_at(out,u.start,u.end);out[tail-9]=number
     for at,owner,_ in refs:
         if owner==old:out[at]=number
     checked=roster(core.SaveFile(out))
     if next(x.unit_number for v,x in checked if v.person==person)!=number:
-        raise core.SaveError('Renumber did not read back.')
+        raise core.SaveError('修改后的单位编号未通过读回校验。')
     return out
 
 
@@ -403,14 +415,14 @@ def copy_in(src,unit,dst):
     """Guard the existing import path against character and number collisions."""
     require_context(dst)
     if context(dst) != 'free-time' or len(pool_groups(dst)) != 1:
-        raise core.SaveError('Copy unit in requires a free-time save with one party group.')
+        raise core.SaveError('请使用仅含一个队伍分组的自由行动存档导入单位。')
     if any(canonical(u.person)==canonical(unit.person) for u,_ in roster(dst)):
-        raise core.SaveError('This character already has a live record in the destination.')
+        raise core.SaveError('目标存档已存在该单位记录。')
     number=next_number(dst)
     gear=core.gear(src,unit)
-    if gear is None: raise core.SaveError('Source identity/equipment layout is unknown.')
+    if gear is None: raise core.SaveError('无法识别来源单位的身份或装备结构。')
     if gear.ride or gear.legion:
-        raise core.SaveError('Detach the source mount/battalion before importing; shared equipment is not copied.')
+        raise core.SaveError('请先卸下来源单位的坐骑和军团兵，再导入单位。共享装备需单独分配。')
     work=core.SaveFile(core.copy_unit(src,unit,dst));u=work.units()[-1]
     tail=core.tail_at(work.payload,u.start,u.end);work.payload[tail-9]=number
     roster(work)

@@ -25,7 +25,7 @@ def path_key(path):
 def disk_bytes(path):
     p = Path(path)
     if p.is_symlink():
-        raise core.SaveError(f'Chapter file is a symbolic link: {p.name}')
+        raise core.SaveError(f'章节文件是符号链接，无法替换：{p.name}')
     try:
         return p.read_bytes()
     except FileNotFoundError:
@@ -43,7 +43,7 @@ def prepare(files, dirty):
         if request is None:
             continue
         if not isinstance(request, story.ChapterFileRequest):
-            raise core.SaveError('Unknown chapter-file request. Apply the chapter start again.')
+            raise core.SaveError('无法识别章节文件请求，请重新应用所选章节的起始进度。')
         chapter = request.chapter
         f = core.SaveFile(sv.payload)
         info = story_start.validate(f)
@@ -52,11 +52,11 @@ def prepare(files, dirty):
         # Reject stale requests after a snapshot restore or unrelated story edit.
         if (info.route != request.route or info.part != request.part or info.chapter != chapter
                 or bytes(story_start.edited(f, chapter)) != bytes(f.payload)):
-            raise core.SaveError('The requested chapter file no longer matches a staged chapter start. Apply the chapter start again before saving.')
+            raise core.SaveError('要创建的章节文件已与暂存的起始进度不符。请重新应用所选章节的起始进度，再保存。')
         target = str(Path(source).absolute().with_name(story.chapter_filename(info.route, chapter, info.part)))
         key = path_key(target)
         if key in targets or (key in dirty_keys and key != path_key(source)):
-            raise core.SaveError(f'{Path(target).name} has competing unsaved changes. Save or discard that slot first.')
+            raise core.SaveError(f'{Path(target).name} 有其他未保存的修改。请先保存或放弃该槽位的修改。')
         targets.add(key)
         previous = disk_bytes(target)
         plans[source] = ChapterWrite(source, target, sv.to_bytes(), previous)
@@ -65,7 +65,7 @@ def prepare(files, dirty):
 
 def check_unchanged(plan):
     if disk_bytes(plan.target) != plan.previous:
-        raise core.SaveError(f'{Path(plan.target).name} changed after the overwrite check. Save again to review the current file.')
+        raise core.SaveError(f'确认替换后，{Path(plan.target).name} 已发生变化。请重新保存并核对当前文件。')
 
 
 def write(plan):

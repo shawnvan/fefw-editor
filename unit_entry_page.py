@@ -3,8 +3,25 @@ import tkinter as tk
 from tkinter import ttk, simpledialog, messagebox
 
 import fefw_core as core
+from fefw_save import chinese_name
 import unit_entries as entries
 from ui_util import ScrollableFrame
+from zh_names import CHARACTERS
+
+
+EVIDENCE_ZH = {
+    'Data-derived; game test pending': '根据数据推断，尚待游戏验证',
+    'Passed Leda Chapter 9 addition, deployment and progression checks; other contexts untested':
+        '已在蕾达第9章验证添加、出击和后续推进，其他场景尚待验证',
+    'Special case: passed Leda Chapter 9 with a helmeted portrait and an unhelmeted generic battle model. Custom appearance/name is not supplied':
+        '已在蕾达第9章验证。头像戴头盔，战斗模型为未戴头盔的通用模型，自定义外观和姓名未写入',
+    'Starts dismounted: passed Leda Chapter 9. Mounted Elephant Rider also passed Part 3 Chapter 2; earlier Leda deployment failed. Remounting and the map/unlock requirements remain unverified':
+        '以解除骑乘的状态加入。已在蕾达第9章验证。骑乘状态的战象兵已在救世篇第2区分通过测试，但此前在蕾达路线出击失败。重新骑乘及地图和解锁条件尚待验证',
+}
+
+
+def recruit_name(person, row):
+    return chinese_name("units", person) or CHARACTERS.get(row["name"], row["name"])
 
 
 class UnitEntryPageMixin:
@@ -19,7 +36,7 @@ class UnitEntryPageMixin:
     def apply_unit_entry(self, action, person, number=None, expected=None):
         if not self._unit_entry_ready():return False
         if expected is not None and (self.sv is not expected[0] or bytes(self.sv.payload)!=expected[1]):
-            self.flash('The selected save changed. Reopen the unit preview.', 'warn');return False
+            self.flash('所选存档已变更，请重新打开单位预览。', 'warn');return False
         def edit(f):
             entries.require_context(f)
             if action in ('add', 'restore'):
@@ -31,7 +48,7 @@ class UnitEntryPageMixin:
                 return entries.add(f, person)  # Reject duplicates/unknown states.
             if action == 'renumber':
                 return entries.renumber(f, person, number)
-            raise core.SaveError('Unknown unit action.')
+            raise core.SaveError('无法识别此单位操作。')
         # The preview action is exact for the selected slot. Peers may need
         # creation, flag restoration, or no change, and allocate numbers locally.
         try:
@@ -46,16 +63,16 @@ class UnitEntryPageMixin:
                     entries.require_context(f)
                     entries.roster(f)
             except core.SaveError as exc:
-                self.flash(f'Nothing changed: {exc}', 'error');return False
+                self.flash(f'未做更改：{exc}', 'error');return False
             if any(entries.context(f)=='pre-battle' for f in targets):
-                if not messagebox.askokcancel('Pre-battle unit warning',
-                        'One or more target saves are in battle preparation.\n\n'
-                        'Added units may start with reduced HP or stats, or may not appear '
-                        'in the editor window. Battle setup can change the added unit.\n\n'
-                        'Continue with this unit change?', icon='warning', default='cancel', parent=self):
+                if not messagebox.askokcancel('出击准备存档提示',
+                        '至少一个目标存档处于出击准备阶段。\n\n'
+                        '添加的单位可能以较低的 HP 或能力值开场，也可能暂时无法在编辑器中显示。'
+                        '游戏初始化战斗时可能改变该单位。\n\n'
+                        '仍要应用修改吗？', icon='warning', default='cancel', parent=self):
                     return False
-        label = {'add':'Unit added where missing', 'restore':'Recruitment restored',
-                 'renumber':'Unit number and mapped ownership references updated'}.get(action, 'Unit edit')
+        label = {'add':'已添加缺少的单位', 'restore':'已恢复单位加入状态',
+                 'renumber':'已更新单位编号及已知装备归属记录'}.get(action, '已编辑单位')
         if not self._core_edit(edit, label):
             return False
         self.uid=person;self.show_unit()
@@ -71,16 +88,16 @@ class UnitEntryPageMixin:
             except core.SaveError as exc:number=None;allocation_error=str(exc)
         except core.SaveError as exc:self.flash(str(exc),'error');return
         from editor_advanced import class_label
-        win=tk.Toplevel(self);win.title('Add unit — preview');win.transient(self)
+        win=tk.Toplevel(self);win.title('添加单位预览');win.transient(self)
         win.configure(background=ttk.Style(win).lookup('TFrame','background'))
         win.columnconfigure(0,weight=1)
         win.rowconfigure(1,weight=3,minsize=100)
         win.rowconfigure(2,weight=2,minsize=110)
         top=ttk.Frame(win,padding=12);top.grid(row=0,column=0,sticky='ew')
-        ttk.Label(top,text='Choose a character',style='CardH3.TLabel').pack(anchor='w')
+        ttk.Label(top,text='选择单位',style='CardH3.TLabel').pack(anchor='w')
         context=entries.context(f)
-        note = {'pre-battle': 'Pre-battle: added units may have reduced HP/stats or be missing from the editor window. A warning appears before applying.',
-                'chapter-start': 'Chapter-start addition passed the tested opening. Other opening scripts may still reset or replace units.'}.get(context, '')
+        note = {'pre-battle': '出击准备：添加的单位可能以较低的 HP 或能力值开场，也可能暂时无法在编辑器中显示。应用前会再次提示。',
+                'chapter-start': '已在测试过的章节开场验证添加单位。其他章节脚本仍可能重设或替换单位。'}.get(context, '')
         if note:
             context_note=ttk.Label(top,text=note,wraplength=805)
             context_note.pack(fill='x',pady=(6,0))
@@ -90,9 +107,9 @@ class UnitEntryPageMixin:
         frame=ttk.Frame(win,padding=(12,0));frame.grid(row=1,column=0,sticky='nsew')
         frame.rowconfigure(0,weight=1);frame.columnconfigure(0,weight=1)
         tree=ttk.Treeview(frame,columns=('class','status'),show='tree headings',selectmode='browse',height=6)
-        tree.heading('#0',text='Character');tree.column('#0',width=180,minwidth=140)
-        tree.heading('class',text='Starting class');tree.column('class',width=250,minwidth=230)
-        tree.heading('status',text='Status');tree.column('status',width=340,minwidth=260)
+        tree.heading('#0',text='单位');tree.column('#0',width=180,minwidth=140)
+        tree.heading('class',text='初始兵种');tree.column('class',width=250,minwidth=230)
+        tree.heading('status',text='状态');tree.column('status',width=340,minwidth=260)
         scroll=ttk.Scrollbar(frame,orient='vertical',command=tree.yview);tree.configure(yscrollcommand=scroll.set)
         hscroll=ttk.Scrollbar(frame,orient='horizontal',command=tree.xview);tree.configure(xscrollcommand=hscroll.set)
         tree.grid(row=0,column=0,sticky='nsew');scroll.grid(row=0,column=1,sticky='ns')
@@ -108,31 +125,47 @@ class UnitEntryPageMixin:
             details.canvas.yview_moveto(0)
             picked=tree.selection();selected.update(person=None,action=None)
             apply.state(['disabled'])
-            if not picked:detail.configure(text='Select a character to preview the change.');return
+            if not picked:detail.configure(text='选择单位后可预览修改。');return
             h=int(picked[0],16);r=cat[h];state=states[h]
             action=('add' if state.startswith('Not present') and number is not None else
                     'restore' if state.startswith('Existing inactive') else None)
             selected.update(person=h,action=action)
-            if action=='restore':preview='Restore recruitment/met flags; keep the existing unit and its number.'
-            else:preview=f"Level 1 · {class_label(int(r['class'],16))} · HP {r['hp']} · Unit number {number if number is not None else 'unavailable'}\n{len(r['items'])} starting items · {len(r['magic'])} spells · {len(r['skills'][5])} learned abilities. No mount or battalion is copied."
-            if action=='add':preview+='\nNo existing unit record to restore; this creates a new unit.'
-            preview+=f"\nRecruitment flag (Reads As): {r['recruit_flag']}"
-            mirror_note = ('\nMirroring: each target keeps existing records or restores recruitment; missing characters get a free local unit number. All targets are checked before editing.' if self.mirror.get() else '')
-            detail.configure(text=f"{r['name']} — {state}\n{preview}\n{r['evidence']}. {r['route_scope']}\nRecruitment may interact with later story events. Undo/Redo is available; changes are written on Save."+mirror_note+(f'\n{allocation_error}' if allocation_error and action!='restore' else ''))
-            apply.configure(text='Restore recruitment' if action=='restore' else 'Add unit')
+            if action == 'restore':
+                preview = '恢复加入和会面标记，沿用现有单位及其编号。'
+            else:
+                preview = (f"LV 1 · {class_label(int(r['class'], 16))} · HP {r['hp']} · "
+                           f"单位编号 {number if number is not None else '不可用'}\n"
+                           f"{len(r['items'])} 件初始道具 · {len(r['magic'])} 项魔法 · "
+                           f"{len(r['skills'][5])} 项已习得的能力。新单位以无坐骑和军团兵的状态加入。")
+            if action == 'add':
+                preview += '\n将创建新的单位记录。'
+            preview += f"\n加入标记（原始键名）：{r['recruit_flag']}"
+            mirror_note = ('\n启用镜像时，每个目标会保留现有单位或恢复其加入状态。'
+                           '若缺少该单位，将分配本槽位的空闲编号。编辑前会校验所有目标。' if self.mirror.get() else '')
+            evidence = EVIDENCE_ZH.get(r['evidence'], r['evidence'])
+            scope = ('适用路线和部数尚待验证。单位通过编辑器加入，游戏内招募事件需另行触发。'
+                     if r['route_scope'] == 'Route/part eligibility unverified; this is not a natural recruitment event.'
+                     else r['route_scope'])
+            detail.configure(text=f"{recruit_name(h, r)} · {entries.status_label(state)}\n{preview}\n"
+                                  f"{evidence}。{scope}\n加入状态可能影响后续剧情。"
+                                  "支持撤销和重做，按 Ctrl+S 写入存档。" + mirror_note
+                                  + (f'\n{allocation_error}' if allocation_error and action != 'restore' else ''))
+            apply.configure(text='恢复加入状态' if action=='restore' else '添加单位')
             if action:apply.state(['!disabled'])
         def fill(*_):
             keep=tree.selection();tree.delete(*tree.get_children());q=search.get().strip().casefold()
-            for h,r in sorted(cat.items(),key=lambda item:item[1]['name'].casefold()):
+            for h,r in sorted(cat.items(),key=lambda item:recruit_name(*item).casefold()):
                 label=class_label(int(r['class'],16))
-                if q and q not in f"{r['name']} {r['pid']} {label} {states[h]}".casefold():continue
-                tree.insert('','end',iid=f'{h:08x}',text=r['name'],values=(label,states[h]))
+                name = recruit_name(h, r)
+                state = entries.status_label(states[h])
+                if q and q not in f"{name} {r['name']} {r['pid']} {label} {state} {states[h]}".casefold():continue
+                tree.insert('','end',iid=f'{h:08x}',text=name,values=(label,state))
             if keep and tree.exists(keep[0]):tree.selection_set(keep)
             choose()
         def commit():
             if selected['action'] and self.apply_unit_entry(selected['action'],selected['person'],expected=expected):win.destroy()
-        apply=ttk.Button(bar,text='Add unit',style='Accent.TButton',command=commit);apply.pack(side='right')
-        ttk.Button(bar,text='Cancel',command=win.destroy).pack(side='right',padx=8)
+        apply=ttk.Button(bar,text='添加单位',style='Accent.TButton',command=commit);apply.pack(side='right')
+        ttk.Button(bar,text='取消',command=win.destroy).pack(side='right',padx=8)
         search.bind('<KeyRelease>',fill);tree.bind('<<TreeviewSelect>>',choose)
         self.place_dialog(win,920,760)
         win.minsize(min(self.px(580),win.winfo_screenwidth()-40),
@@ -144,12 +177,12 @@ class UnitEntryPageMixin:
         person=self.uid;expected=(self.sv,bytes(self.sv.payload))
         try:
             if entries.context(self.core_of()) != 'free-time':
-                raise core.SaveError('Renumbering requires a free-time save; battle references are not rewritten.')
+                raise core.SaveError('请使用自由行动存档修改单位编号。此操作无法重写战斗中的单位引用。')
             rows=[g for u,g in entries.roster(self.core_of()) if u.person==person]
-            if len(rows)!=1:raise core.SaveError('No unique character record is selected.')
+            if len(rows)!=1:raise core.SaveError('未选中唯一的单位记录。')
             old=rows[0].unit_number
         except core.SaveError as exc:self.flash(str(exc),'error');return
-        number=simpledialog.askinteger('Change unit number',
-            f'Current unit_number: {old}\nEnter an unused number (1–254).\nMapped mount and battalion ownership will move with the unit.\nThis action is experimental until its in-game checks pass.',
+        number=simpledialog.askinteger('修改单位编号',
+            f'当前编号：{old}\n请输入未使用的编号（1–254）。\n已知的坐骑与军团兵归属记录也会更新。\n此操作仍为实验功能，尚待游戏验证。',
             initialvalue=old,minvalue=1,maxvalue=254,parent=self)
         if number is not None:self.apply_unit_entry('renumber',person,number,expected)

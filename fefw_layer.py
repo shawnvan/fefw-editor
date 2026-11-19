@@ -170,8 +170,8 @@ def remove_item(payload: bytearray, uid: int, index: int) -> bool:
 # --------------------------------------------------------------------------
 # arts / skills  (the record's sections after the items)
 # --------------------------------------------------------------------------
-SKILL_LIST_NAMES = ("装备战技", "装备技能", "列表 3", "已掌握战技",
-                    "列表 5", "已学会（全部）")
+SKILL_LIST_NAMES = ("装备战技", "装备特技", "列表 3", "已习得战技",
+                    "列表 5", "已习得（全部）")
 
 
 def skill_lists(payload, uid: int) -> list:
@@ -237,7 +237,7 @@ def _skill_zh(jp: str):
 
 def skill_label(sid: int) -> str:
     """Prefer game-derived and verified Chinese names, then original labels."""
-    official = chinese_name("skills", sid)
+    official = chinese_name("skills", sid) or chinese_name("skill_variants", sid)
     if official:
         return official
     meta = item_ids().get(sid & 0xFFFFFFFF)
