@@ -16,15 +16,13 @@ import fefw_core as core
 import worldmap as wm
 from ui_util import enable_multi_select
 
-VIEWS = (("places", "Places"), ("roads", "Roads"), ("points", "Junctions & road points"))
+VIEWS = (("places", "地点"), ("roads", "道路"), ("points", "岔路与道路点"))
 NOTE = (
-    "“Shown” makes a point appear on the world map; it does not open anything behind it — "
-    "gates, battles, rewards, quests and fast travel keep their own conditions. “Visited” "
-    "is the white versus the dark icon. Roads are drawn through their own points, so "
-    "showing a road also shows the places and junctions at its ends; hiding one only hides "
-    "the points that belong to that road. “State 2” is a value the game writes on some "
-    "road points that isn't understood yet: it is listed as it is and changed only if you "
-    "pick it. Close the game and keep a backup before you write."
+    "“已显示”让一个点出现在世界地图上，但不会打开它背后的任何内容——城门、战斗、奖励、"
+    "任务和快速传送各有各的条件。“已到访”是白色与深色图标的区别。道路沿自己的点绘制，"
+    "因此显示一条道路也会显示其两端的地点和岔路；隐藏道路只会隐藏属于该道路的点。"
+    "“状态 2”是游戏写在部分道路点上的、尚未理解的值：编辑器按原样列出，只有你选中它才会"
+    "改动。写入前请关闭游戏并保留备份。"
 )
 
 
@@ -38,13 +36,13 @@ class MapPageMixin:
         top.pack(fill="x")
         row = ttk.Frame(top, style="Card.TFrame")
         row.pack(fill="x")
-        ttk.Label(row, text="World map", style="CardH3.TLabel").pack(side="left")
+        ttk.Label(row, text="世界地图", style="CardH3.TLabel").pack(side="left")
         self.map_count = ttk.Label(row, text="", style="CardMuted.TLabel")
         self.map_count.pack(side="left", padx=(10, 0))
-        for text, cmd in (("Mark unvisited", lambda: self.map_selected(None, 0)),
-                          ("Mark visited", lambda: self.map_selected(None, 1)),
-                          ("Hide", lambda: self.map_selected(wm.HIDDEN, None)),
-                          ("Show", lambda: self.map_selected(wm.SHOWN, None))):
+        for text, cmd in (("标记未到访", lambda: self.map_selected(None, 0)),
+                          ("标记已到访", lambda: self.map_selected(None, 1)),
+                          ("隐藏", lambda: self.map_selected(wm.HIDDEN, None)),
+                          ("显示", lambda: self.map_selected(wm.SHOWN, None))):
             ttk.Button(row, text=text, style="Small.TButton", command=cmd).pack(
                 side="right", padx=(6, 0))
 
@@ -62,13 +60,13 @@ class MapPageMixin:
 
         bulk = ttk.Frame(top, style="Card.TFrame")
         bulk.pack(fill="x", pady=(8, 0))
-        ttk.Label(bulk, text="Everything at once:", style="CardMuted.TLabel").pack(side="left")
-        ttk.Button(bulk, text="Show all places", style="Small.TButton",
+        ttk.Label(bulk, text="一键操作：", style="CardMuted.TLabel").pack(side="left")
+        ttk.Button(bulk, text="显示全部地点", style="Small.TButton",
                    command=self.map_show_all_places).pack(side="left", padx=(8, 0))
-        ttk.Button(bulk, text="Show all roads", style="Small.TButton",
+        ttk.Button(bulk, text="显示全部道路", style="Small.TButton",
                    command=self.map_show_all_roads).pack(side="left", padx=(6, 0))
         self.map_mark_visited = tk.BooleanVar(value=False)
-        ttk.Checkbutton(bulk, text="also mark those places visited", style="Card.TCheckbutton",
+        ttk.Checkbutton(bulk, text="同时标记这些地点为已到访", style="Card.TCheckbutton",
                         variable=self.map_mark_visited).pack(side="left", padx=(12, 0))
 
         # the note goes in before the table so a short window can't push it off
@@ -77,11 +75,11 @@ class MapPageMixin:
         self.map_tree = _scrolled_tree(page, columns=("jp", "kind", "state", "visited"),
                                        show="tree headings", selectmode="extended")
         t = self.map_tree
-        t.heading("#0", text="Name", anchor="w")
-        t.heading("jp", text="Game name", anchor="w")
-        t.heading("kind", text="Kind", anchor="w")
-        t.heading("state", text="On the map", anchor="w")
-        t.heading("visited", text="Visited", anchor="w")
+        t.heading("#0", text="名称", anchor="w")
+        t.heading("jp", text="游戏内名称", anchor="w")
+        t.heading("kind", text="类型", anchor="w")
+        t.heading("state", text="地图上", anchor="w")
+        t.heading("visited", text="已到访", anchor="w")
         t.column("#0", width=300)
         t.column("jp", width=190)
         t.column("kind", width=140, stretch=False)
@@ -127,10 +125,10 @@ class MapPageMixin:
         cat = wm.catalog()
         recs, err = self._map_records()
         if cat is None:
-            self.map_count.configure(text="map_spots.json is missing — the map can't be named.")
+            self.map_count.configure(text="缺少 map_spots.json——无法为地图点命名。")
             return
         if recs is None:
-            self.map_count.configure(text=err or "Open a save to see its map.")
+            self.map_count.configure(text=err or "打开存档以查看地图。")
             return
         tree.tag_configure("flag_unknown", foreground=self.p["muted"])
         q = self.map_search.get().strip().lower()
@@ -144,11 +142,11 @@ class MapPageMixin:
                 if any(r is None for r in pts) or (q and q not in (name + " " + jp).lower()):
                     continue
                 on = sum(1 for r in pts if r.state == wm.SHOWN)
-                state = ("Shown" if on == len(pts) else "Hidden" if on == 0
-                         else "%d of %d" % (on, len(pts)))
+                state = ("已显示" if on == len(pts) else "隐藏" if on == 0
+                         else "%d / %d" % (on, len(pts)))
                 iid = "r%d" % n
                 tree.insert("", "end", iid=iid, text=name, tags=() if on else ("flag_unknown",),
-                            values=(jp, "%d points" % len(road), state, ""))
+                            values=(jp, "%d 个点" % len(road), state, ""))
                 self._map_rows[iid] = ("road", n)
                 listed += 1
         else:
@@ -158,14 +156,15 @@ class MapPageMixin:
                 if rec is None or s.is_place != want_places:
                     continue
                 total += 1
-                if q and q not in (s.name + " " + s.jp + " " + cat.kind_name(s.kind)).lower():
+                if q and q not in (s.name + " " + s.en + " " + s.jp + " "
+                                   + cat.kind_name(s.kind)).lower():
                     continue
                 iid = "s%d" % s.index
                 tree.insert("", "end", iid=iid, text=s.name,
                             tags=() if rec.state != wm.HIDDEN else ("flag_unknown",),
                             values=(s.jp if s.jp != s.name else "", cat.kind_name(s.kind),
-                                    wm.STATE_NAMES.get(rec.state, "state %d" % rec.state),
-                                    {0: "No", 1: "Yes"}.get(rec.visited, str(rec.visited))))
+                                    wm.STATE_NAMES.get(rec.state, "状态 %d" % rec.state),
+                                    {0: "否", 1: "是"}.get(rec.visited, str(rec.visited))))
                 self._map_rows[iid] = ("spot", s.index)
                 listed += 1
         keep = [i for i in keep if tree.exists(i)]
@@ -173,7 +172,7 @@ class MapPageMixin:
             tree.selection_set(keep)
         pl = [recs[s.key] for s in wm.places(cat) if s.key in recs]
         on = sum(1 for r in pl if r.state != wm.HIDDEN)
-        self.map_count.configure(text="%d of %d places on the map · listing %d of %d"
+        self.map_count.configure(text="地图上有 %d / %d 个地点 · 列出 %d / %d 条"
                                       % (on, len(pl), listed, total))
 
     # ------------------------------------------------------------------ write
@@ -197,20 +196,19 @@ class MapPageMixin:
                     picked[s.key] = (state, None)
         if not picked:
             if not self.map_tree.selection():
-                msg = "Pick a row first."
+                msg = "请先选择一行。"
             elif roads and bare == roads:
-                msg = "That road has no points of its own to hide — it joins two places directly."
+                msg = "这条道路没有自己独享的点可隐藏——它直接连接两个地点。"
             else:
-                msg = "A visited mark applies to places, not to roads."
+                msg = "到访标记只适用于地点，不适用于道路。"
             self.flash(msg, "info")
             return
         parts = []
         if state is not None:
-            parts.append("Shown" if state == wm.SHOWN else "Hidden")
+            parts.append("显示" if state == wm.SHOWN else "隐藏")
         if visited is not None:
-            parts.append("marked " + ("visited" if visited else "unvisited"))
-        self._map_write(picked, "%s %d map point%s" % (" and ".join(parts), len(picked),
-                                                       "" if len(picked) == 1 else "s"))
+            parts.append("标记为" + ("已到访" if visited else "未到访"))
+        self._map_write(picked, "%s %d 个地图点" % ("并".join(parts), len(picked)))
 
     def _map_write(self, edits: dict, what: str):
         skipped = {"n": 0}
@@ -221,42 +219,42 @@ class MapPageMixin:
             return g.payload
 
         if self._core_edit(edit, what) and skipped["n"]:
-            self.flash("%s — %d skipped (a layout or value the editor hasn't seen) — "
-                       "Ctrl+S to write it." % (what, skipped["n"]), "warn")
+            self.flash("%s——跳过 %d 个（存在编辑器未见过的布局或数值）——按 Ctrl+S 写入。"
+                       % (what, skipped["n"]), "warn")
 
     def map_show_all_places(self):
         recs, _ = self._map_records()
         cat = wm.catalog()
         if recs is None or cat is None:
-            self.flash("Open a save with a world map first.", "info")
+            self.flash("请先打开一个有世界地图的存档。", "info")
             return
         mark = self.map_mark_visited.get()
         edits = {s.key: (wm.SHOWN, 1 if mark else None) for s in wm.places(cat)
                  if s.key in recs and (recs[s.key].state == wm.HIDDEN
                                        or (mark and recs[s.key].visited == 0))}
         if not edits:
-            self.flash("Every place is already on the map.", "info")
+            self.flash("所有地点都已在地图上。", "info")
             return
-        self._map_write(edits, "Showed %d places" % len(edits))
+        self._map_write(edits, "已显示 %d 个地点" % len(edits))
 
     def map_show_all_roads(self):
         recs, _ = self._map_records()
         cat = wm.catalog()
         if recs is None or cat is None:
-            self.flash("Open a save with a world map first.", "info")
+            self.flash("请先打开一个有世界地图的存档。", "info")
             return
         edits = {s.key: (wm.SHOWN, None) for s in wm.network(cat)
                  if s.key in recs and recs[s.key].state == wm.HIDDEN}
         if not edits:
-            self.flash("Every junction and road point is already shown.", "info")
+            self.flash("所有岔路和道路点都已显示。", "info")
             return
         if not messagebox.askyesno(
-                "Save editor",
-                "Show %d hidden junctions and road points?\n\nThis draws every road the game "
-                "has, including ones the story hasn't opened yet. Ctrl+Z undoes it." % len(edits),
+                "存档编辑器",
+                "显示 %d 个隐藏的岔路和道路点？\n\n这会画出游戏拥有的全部道路，"
+                "包括剧情尚未开通的。可按 Ctrl+Z 撤销。" % len(edits),
                 parent=self):
             return
-        self._map_write(edits, "Showed %d junctions and road points" % len(edits))
+        self._map_write(edits, "已显示 %d 个岔路和道路点" % len(edits))
 
 
 def _scrolled_tree(master, **kw) -> ttk.Treeview:

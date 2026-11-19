@@ -28,11 +28,12 @@ import os
 from dataclasses import dataclass
 
 import fefw_core as core
+from fefw_save import chinese_name
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 HIDDEN, SHOWN = 1, 3
-STATE_NAMES = {1: "Hidden", 2: "State 2", 3: "Shown"}
+STATE_NAMES = {1: "隐藏", 2: "状态 2", 3: "已显示"}
 EDITABLE_SIZES = (12, 32, 40)       # record sizes seen in real saves
 SECONDARY_SEEN = (0, 3)             # secondary-byte values seen in real saves
 FIRST_NETWORK_KIND = 11             # kinds from here on are junctions / road points
@@ -56,7 +57,9 @@ class Spot:
 
     @property
     def name(self) -> str:
-        return self.en or self.jp
+        # official Chinese from chinese_names.json ("places", keyed by this
+        # spot's save key); English/Japanese only when it is not in the table
+        return chinese_name("places", self.key) or self.en or self.jp
 
     @property
     def is_place(self) -> bool:
@@ -72,7 +75,7 @@ class Catalog:
         self.roads: list[list[int]] = raw["roads"]
 
     def kind_name(self, kind: int) -> str:
-        return self.kinds.get(kind, "Kind %d" % kind)
+        return chinese_name("spkinds", kind) or self.kinds.get(kind, "类型 %d" % kind)
 
     def road_name(self, road: list[int]) -> str:
         a, b = self.spots[road[0]], self.spots[road[-1]]
@@ -117,23 +120,23 @@ def read(f: core.SaveFile) -> dict[int, Record]:
     """
     cat = catalog()
     if cat is None:
-        raise MapError("map_spots.json is missing, so the map points can't be named.")
+        raise MapError("缺少 map_spots.json，无法为地图点命名。")
     block = f.block("GmapSpotMgr")
     if block is None:
-        raise MapError("This save has no world-map block.")
+        raise MapError("此存档没有世界地图数据块。")
     tree = f.tree()
     root = next((i for i, n in enumerate(tree.nodes) if n.start == block.start), -1)
     if root < 0:
-        raise MapError("Couldn't find the world-map block in the save's object tree.")
+        raise MapError("在存档对象树中找不到世界地图数据块。")
     out: dict[int, Record] = {}
     for i, node in enumerate(n for n in tree.nodes if n.parent == root):
         at = node.start - (5 if i == 0 else 4)
         size = node.end - node.start
         if at < block.start or node.end > block.end or size < 8:
-            raise MapError("Unexpected world-map block boundaries.")
+            raise MapError("世界地图数据块边界异常。")
         key = f.u32(at)
         if key in out:
-            raise MapError("Duplicate world-map key - the layout isn't the expected one.")
+            raise MapError("世界地图键重复——布局与预期不符。")
         spot = cat.by_key.get(key)
         if spot is None:
             continue                      # a point this catalogue doesn't know: leave it
@@ -141,8 +144,8 @@ def read(f: core.SaveFile) -> dict[int, Record]:
         out[key] = Record(spot, node.start, size, p[node.start + 4],
                           p[node.start + 5], p[node.start + 6])
     if len(out) < len(cat.spots) // 2:
-        raise MapError("This save's map points don't match the catalogue "
-                       "(%d of %d found) - another game version?" % (len(out), len(cat.spots)))
+        raise MapError("此存档的地图点与目录不匹配（找到 %d / %d 个）"
+                       "——游戏版本不同？" % (len(out), len(cat.spots)))
     return out
 
 

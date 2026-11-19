@@ -12,6 +12,7 @@ import struct
 
 import fefw_core as core
 import facilities
+from fefw_save import chinese_name
 
 HERE = Path(__file__).resolve().parent
 AVAILABLE = 2
@@ -19,6 +20,9 @@ MAP_MEMBER = 0xe9bc5b65
 CATEGORY_NAMES = {1: 'Battle', 2: 'Bases', 3: 'The World Map',
                   4: 'Dungeons', 5: 'Flame Lords', 6: 'Scenario-specific'}
 CATEGORIES = tuple(CATEGORY_NAMES.values())
+# display names; the English set above is what tutorial_names.json stores and
+# validates against, so it stays untouched
+CATEGORY_ZH = {1: '战斗', 2: '据点', 3: '世界地图', 4: '迷宫', 5: '炎之领主', 6: '剧情限定'}
 
 
 class TutorialError(core.SaveError):
@@ -44,7 +48,12 @@ def catalog() -> dict[int, dict]:
             raise ValueError("empty catalogue")
         return entries
     except (OSError, ValueError, KeyError, TypeError) as exc:
-        raise TutorialError(f"Cannot load tutorial_names.json: {exc}") from exc
+        raise TutorialError(f"无法加载 tutorial_names.json：{exc}") from exc
+
+
+def title(h: int, row: dict) -> str:
+    """Official Chinese title when the game text provides one, else English."""
+    return chinese_name("tutorials", h) or row["label"]
 
 
 def apply_labels(names: dict[int, dict]) -> None:
@@ -53,22 +62,21 @@ def apply_labels(names: dict[int, dict]) -> None:
         previous = names.get(h, {})
         if previous.get("name", row["name"]) != row["name"]:
             raise TutorialError(f"Conflicting flag name for {h:08x}")
-        suffix = ' (provisional)' if row['evidence'] == 'provisional-translation' else ''
+        suffix = '（暂定）' if row['evidence'] == 'provisional-translation' else ''
         names[h] = {**previous, "name": row["name"],
-                    "label": "Tutorial: " + row["label"] + suffix, "kind": "tutorial"}
+                    "label": "教程：" + title(h, row) + suffix, "kind": "tutorial"}
 
 
 def evidence_label(row):
-    return 'Provisional name' if row['evidence'] == 'provisional-translation' else 'Game title checked'
+    return '暂定名' if row['evidence'] == 'provisional-translation' else '游戏标题已核对'
 
 
 def visibility_note(row):
     if row['category_id'] == 6:
-        return ('Scenario-specific is an editor category, separate from Battle. '
-                'These records are absent from the tested in-game Tutorials menus even when saved as 2. '
-                'Whether they appear during their matching scenarios is unverified.')
-    return ('Stored state does not guarantee menu visibility in every context, '
-            'and adding a tutorial does not unlock the feature it describes.')
+        return ('剧情限定是编辑器自己的分类，与战斗分开。即使保存为 2，这些记录也未出现在'
+                '测试过的游戏内教程菜单中；它们是否会在对应剧情中出现尚未验证。')
+    return ('保存的状态并不保证在所有情境下都显示在菜单里，添加教程也不会解锁它所'
+            '介绍的功能。')
 
 
 def _structural_map(f):
@@ -83,18 +91,18 @@ def _structural_map(f):
     if (table+8*count != parent.end or len({k for k,v in rows}) != count
             or len({v for k,v in rows}) != count
             or {v for k,v in rows} != {n.start for n in tree.nodes if n.parent == parent_index}):
-        raise TutorialError('Unrecognised tutorial flag group; editing is disabled.')
+        raise TutorialError('无法识别的教程标记组；编辑已禁用。')
     targets = [v for k,v in rows if k == MAP_MEMBER]
     if len(targets) != 1 or targets[0] == general_start:
-        raise TutorialError('No unique tutorial member; editing is disabled.')
+        raise TutorialError('教程成员不唯一；编辑已禁用。')
     at = targets[0]; index = tree.node_at(at); node = tree.nodes[index]
     if node.struct or any(n.parent == index for n in tree.nodes):
-        raise TutorialError('Unexpected tutorial member structure; editing is disabled.')
+        raise TutorialError('教程成员结构异常；编辑已禁用。')
     maps = [m for m in core.flag_maps(f) if m.start == at]
     if not maps and bytes(f.payload[at+4:node.end]) == bytes(4):
         return core.FlagMap(-1, at, [])
     if len(maps) != 1 or f.ptr(at) != node.end:
-        raise TutorialError('Invalid tutorial list; editing is disabled.')
+        raise TutorialError('教程列表无效；编辑已禁用。')
     return maps[0]
 
 
@@ -109,7 +117,7 @@ def _tutorial_hashes() -> frozenset[int]:
                       if row.get("name", "").startswith("TUTO_")
                       and core.id_hash(row["name"]) == int(h, 16))
     except (OSError, ValueError, KeyError, TypeError) as exc:
-        raise TutorialError(f"Cannot load flag_names.json: {exc}") from exc
+        raise TutorialError(f"无法加载 flag_names.json：{exc}") from exc
     return frozenset(hashes)
 
 
@@ -121,21 +129,21 @@ def locate(f: core.SaveFile) -> core.FlagMap:
     structural = _structural_map(f)
     if structural is not None:
         if any(m.start != structural.start for m in candidates):
-            raise TutorialError('Ambiguous tutorial lists; editing is disabled.')
+            raise TutorialError('存在多个可能的教程列表；编辑已禁用。')
         fm = structural
     elif len(candidates) != 1:
-        raise TutorialError("No unique tutorial list found; this save is read-only here.")
+        raise TutorialError("找不到唯一的教程列表；此页对此存档只读。")
     else:
         fm = candidates[0]
     known = {fl.hash for fl in fm.flags if fl.hash in hashes}
     if structural is None and core.id_hash("TUTO_オートセーブ") not in known and len(known) < 3:
-        raise TutorialError("Too little evidence to identify the tutorial list safely.")
+        raise TutorialError("证据不足，无法安全识别教程列表。")
     if len({fl.hash for fl in fm.flags}) != len(fm.flags):
-        raise TutorialError("Duplicate tutorial-list keys; editing is disabled.")
+        raise TutorialError("教程列表键重复；编辑已禁用。")
     tree = f.tree()
     node = tree.node_at(fm.start)
     if node < 0 or any(n.parent == node for n in tree.nodes):
-        raise TutorialError("Unrecognised tutorial-list structure; editing is disabled.")
+        raise TutorialError("无法识别的教程列表结构；编辑已禁用。")
     return fm
 
 
@@ -146,12 +154,12 @@ def read(f: core.SaveFile) -> dict[int, int]:
 
 def state_label(value: int | None) -> str:
     if value is None:
-        return "Absent"
+        return "未记录"
     if value == AVAILABLE:
-        return "Stored (2)"
+        return "已保存 (2)"
     if value == 1:
-        return "Present (1)"
-    return f"Unknown ({value}); preserved"
+        return "存在 (1)"
+    return f"未知（{value}）；保留"
 
 
 def edited(f: core.SaveFile, edits: dict[int, int | None]) -> bytearray:
@@ -164,12 +172,12 @@ def edited(f: core.SaveFile, edits: dict[int, int | None]) -> bytearray:
     cat = catalog()
     for h, value in edits.items():
         if h not in cat or (value is not None and (type(value) is not int or value != AVAILABLE)):
-            raise TutorialError("Only identified tutorials and stored state 2/removal are supported.")
+            raise TutorialError("仅支持已识别的教程，以及保存为状态 2 或移除。")
     fm = locate(f)
     present = {fl.hash: fl.value for fl in fm.flags}
     for h in edits:
         if h in present and present[h] not in (1, AVAILABLE):
-            raise TutorialError(f"{cat[h]['label']} has unknown state {present[h]}; unchanged.")
+            raise TutorialError(f"{title(h, cat[h])} 的状态未知（{present[h]}）；未改动。")
     effective = {h: v for h, v in edits.items() if present.get(h) != v}
     if not effective:
         return bytearray(f.payload)
@@ -186,13 +194,13 @@ def edited(f: core.SaveFile, edits: dict[int, int | None]) -> bytearray:
         if h not in present and v is not None:
             records.append(struct.pack("<IB", h, v))
     if len(records) > 65535:
-        raise TutorialError("The tutorial list is full.")
+        raise TutorialError("教程列表已满。")
     # Removing its last identifying entries would make subsequent additions
     # ambiguous. Refuse rather than create a list the editor cannot locate.
     remaining = (present.keys() - effective.keys()) | {h for h, v in effective.items() if v is not None}
     known = remaining & _tutorial_hashes()
     if (_structural_map(f) is None and core.id_hash("TUTO_オートセーブ") not in known
             and len(known) < 3):
-        raise TutorialError("Keep Autosave or at least three identified tutorials so the list remains identifiable.")
+        raise TutorialError("请保留“自动保存”或至少三个已识别的教程，列表才能继续被识别。")
     body = bytes([f.payload[fm.start + 4]]) + struct.pack("<H", len(records)) + b"".join(records)
     return core.replace_content(f, fm.start, body)

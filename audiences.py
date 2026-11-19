@@ -9,6 +9,7 @@ import struct
 
 import blessings
 import fefw_core as core
+from zh_names import CHARACTERS
 
 
 class AudienceError(core.SaveError):
@@ -41,29 +42,30 @@ def apply_labels(names: dict[int, dict]) -> None:
     for god, key in KEYS.items():
         h = HASHES[god]
         names[h] = {**names.get(h, {}), "name": key, "kind": "audience",
-                    "label": f"First audience: {blessings.BY_HASH[god].name}"}
+                    "label": f"初谒：{CHARACTERS.get(blessings.BY_HASH[god].name,
+                                                   blessings.BY_HASH[god].name)}"}
 
 
 def locate(f: core.SaveFile) -> core.FlagMap:
     blocks = [b for b in f.blocks if b.name == "GameUserData"]
     if len(blocks) != 1:
-        raise AudienceError("No unique GameUserData block; audience editing is disabled.")
+        raise AudienceError("GameUserData 数据块不唯一；谒见编辑已禁用。")
     identities = ANCHORS | set(HASHES.values())
     candidates = [m for m in core.flag_maps(f)
                   if any(fl.hash in identities for fl in m.flags)]
     if len(candidates) != 1:
-        raise AudienceError("No unique shared audience map; audience editing is disabled.")
+        raise AudienceError("共享谒见标记表不唯一；谒见编辑已禁用。")
     fm = candidates[0]
     hashes = {fl.hash for fl in fm.flags}
     if len(hashes & ANCHORS) < MIN_ANCHORS or len(hashes) != len(fm.flags):
-        raise AudienceError("Audience map needs two unchanged anchors and no duplicate keys.")
+        raise AudienceError("谒见标记表需要两个未改动的锚点，且不能有重复键。")
     tree = f.tree()
     node, user = tree.node_at(fm.start), tree.node_at(blocks[0].start)
     group = tree.nodes[node].parent if node >= 0 else -1
     if (node < 0 or user < 0 or group < 0 or tree.nodes[node].struct or
             not tree.nodes[group].struct or tree.nodes[group].parent != user or
             any(n.parent == node for n in tree.nodes)):
-        raise AudienceError("Unrecognised shared audience map structure; editing is disabled.")
+        raise AudienceError("无法识别的共享谒见标记表结构；编辑已禁用。")
     return fm
 
 
@@ -74,28 +76,28 @@ def read(f: core.SaveFile) -> dict[int, int]:
 
 def state_label(god: int, values: dict[int, int]) -> str:
     if god not in KEYS:
-        return "Not required"  # Fortuna: the data has no audience condition.
+        return "无需谒见"  # 芙托娜：数据中没有谒见条件。
     value = values.get(HASHES[god])
     if value is None:
-        return "Not recorded"
+        return "未记录"
     if value == 1:
-        return "Recorded (1)"
-    return f"Unknown ({value}); preserved"
+        return "已记录 (1)"
+    return f"未知（{value}）；保留"
 
 
 def edited(f: core.SaveFile, edits: dict[int, int | None]) -> bytearray:
     """One/absent only, preserving all other records and their encoding."""
     for god, value in edits.items():
         if type(god) is not int or god not in KEYS:
-            raise AudienceError("Only the six identified audience flags can be edited; Fortuna has none.")
+            raise AudienceError("只能编辑已识别的六个谒见标记；芙托娜没有。")
         if value is not None and (type(value) is not int or value != 1):
-            raise AudienceError("An audience can only be recorded (1) or removed.")
+            raise AudienceError("谒见只能记录（1）或移除。")
     fm = locate(f)
     present = {fl.hash: fl.value for fl in fm.flags}
     requested = {HASHES[god]: value for god, value in edits.items()}
     for h in requested:
         if h in present and present[h] != 1:
-            raise AudienceError(f"Audience {h:08x} has an unknown value; unchanged.")
+            raise AudienceError(f"谒见 {h:08x} 的数值未知；未改动。")
     effective = {h: v for h, v in requested.items() if present.get(h) != v}
     if not effective:
         return bytearray(f.payload)
@@ -109,6 +111,6 @@ def edited(f: core.SaveFile, edits: dict[int, int | None]) -> bytearray:
         if h not in present and value is not None:
             records.append(struct.pack("<IB", h, value))
     if len(records) > 65535:
-        raise AudienceError("The shared flag map is full.")
+        raise AudienceError("共享标记表已满。")
     body = bytes([f.payload[fm.start + 4]]) + struct.pack("<H", len(records)) + b"".join(records)
     return core.replace_content(f, fm.start, body)

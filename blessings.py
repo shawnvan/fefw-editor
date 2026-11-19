@@ -67,11 +67,11 @@ def read(f: core.SaveFile) -> Table:
     """
     blocks = [b for b in f.blocks if b.name == "GameUserData"]
     if len(blocks) != 1:
-        raise BlessingError("No unique GameUserData block; blessing editing is disabled.")
+        raise BlessingError("GameUserData 数据块不唯一；加护编辑已禁用。")
     tree = f.tree()
     parent = tree.node_at(blocks[0].start)
     if parent < 0:
-        raise BlessingError("Cannot identify the live blessing data.")
+        raise BlessingError("无法识别当前生效的加护数据。")
     signatures = {struct.pack("<Q", h) for h in BY_HASH}
     candidates = []
     for index, node in enumerate(tree.nodes):
@@ -83,19 +83,19 @@ def read(f: core.SaveFile) -> Table:
                    in signatures for i in range(7)):
                 candidates.append((index, node))
     if len(candidates) != 1:
-        raise BlessingError("No unique seven-god blessing table; this save is read-only here.")
+        raise BlessingError("七神加护表不唯一；此页对此存档只读。")
     index, node = candidates[0]
     p, at = f.payload, node.start
     if (node.struct or node.end - at != 88 or p[at + 4] != 2 or p[at + 9] != 7
             or any(n.parent == index for n in tree.nodes)):
-        raise BlessingError("Unrecognised blessing layout; editing is disabled.")
+        raise BlessingError("无法识别的加护数据布局；编辑已禁用。")
     records = []
     for i in range(7):
         start = at + 10 + i * 11
         h, selected, exp = struct.unpack_from("<QBH", p, start)
         records.append(Record(h, selected, exp, start + 9))
     if {r.hash for r in records} != set(BY_HASH):
-        raise BlessingError("Missing, duplicate or unknown blessing identity; editing is disabled.")
+        raise BlessingError("加护身份缺失、重复或未知；编辑已禁用。")
     return Table(at, node.end, f.u32(at + 5), tuple(records))
 
 
@@ -109,9 +109,9 @@ def edited(f: core.SaveFile, edits: dict[int, int]) -> bytearray:
     """Return a copy with only the requested two-byte EXP fields changed."""
     for h, exp in edits.items():
         if type(h) is not int or h not in BY_HASH:
-            raise BlessingError("Only the seven identified gods can be edited.")
+            raise BlessingError("只能编辑已识别的七位神明。")
         if type(exp) is not int or not 0 <= exp <= MAX_EXP:
-            raise BlessingError("EXP must be a whole number from 0 to 65535.")
+            raise BlessingError("经验必须是 0 到 65535 的整数。")
     table = read(f)  # Validate everything before any write, including a no-op.
     result = bytearray(f.payload)
     for record in table.records:
