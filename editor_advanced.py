@@ -1245,11 +1245,19 @@ def add_skill(self, index: int):
     # every entry in these lists is a skill / combat art id (SID_…), never an item;
     # [e] / [効果] / SC_ / エフェクト_ entries are internal effect definitions,
     # not skills a unit can learn, so they stay out of the picker
-    rows = [(h, layer.skill_label(h), " ".join(filter(None, (m.get("en"), m.get("jp"), m.get("sid")))))
-            for h, m in layer._skills().items()
-            if not (m.get("sid") or "").startswith("SID_>") and (m.get("en") or m.get("jp"))
-            and "[" not in (m.get("jp") or "")
-            and not (m.get("jp") or "").startswith(("[e]", "SC", "エフェクト", "イベント", "SID_"))]
+    # pickable = has an English name (the real learnable skills) or an actual
+    # table translation; a Japanese-only label is kanji too, so "contains a
+    # Han character" is not proof of a translation — the table must hit
+    rows = []
+    for h, m in layer._skills().items():
+        jp = m.get("jp") or ""
+        if (m.get("sid") or "").startswith("SID_>") or "[" in jp \
+                or jp.startswith(("[e]", "SC", "エフェクト", "イベント", "SID_", ">")):
+            continue
+        if not ((m.get("en") or "").strip() or layer._skill_zh(jp)):
+            continue
+        rows.append((h, layer.skill_label(h),
+                     " ".join(filter(None, (m.get("en"), jp, m.get("sid"))))))
     # skills with an English name first; internal / enemy-only entries after
     eng = {h for h, m in layer._skills().items() if m.get("en")}
     rows.sort(key=lambda r: (r[0] not in eng, str(r[1]).lower()))

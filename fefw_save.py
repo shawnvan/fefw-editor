@@ -1104,6 +1104,24 @@ def item_label(iid: int, meta: dict | None = None) -> str:
     m = re.search(r"\+(\d+)$", jp)
     base_jp = jp[:m.start()] if m else jp
     zh = chinese_name("items", iid) or ITEMS.get(base_jp)
+    if not zh:
+        # monster weapon variants (ルフ_物攻_鉄 …), per-chapter copies (_SC12_16),
+        # bracket tags and story flags all reuse the base item's name
+        mat = {"鉄": "·铁", "銀": "·银", "青銅": "·青铜", "青": "·青铜"}.get(
+            (re.search(r"_(鉄|銀|青銅|青)(_:?\w*)?$", base_jp) or [None, ""])[1]
+            if re.search(r"_(鉄|銀|青銅|青)(_:?\w*)?$", base_jp) else "", "")
+        stem = base_jp
+        for _ in range(4):
+            new_stem = re.sub(
+                r"(_第\d+部)?_(物攻|魔攻)_?(鉄|銀|青銅|青)?_?$|_SC[\dX]+(_\d+)*$"
+                r"|\[[^]]+\]$|_戦技なし$|_敵$|_特別$|_通知$|_第\d+部$"
+                r"|(?:_2部|_3部)$|\(SC[\d_]+強?\)$|_左手$|_両手$|\+\d+$", "", stem)
+            if new_stem == stem:
+                break
+            stem = new_stem
+        hit = ITEMS.get(stem)
+        if hit:
+            zh = hit + mat
     if zh:
         return f"{zh} +{m.group(1)}" if m else zh
     # forged copies take the base item's name, so "+1…+5" line up with it, and
