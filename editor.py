@@ -1691,9 +1691,12 @@ class App(AdvancedMixin, tk.Tk):
         return "break"
 
     def flash(self, msg: str, kind: str = "info"):
+        lbl = getattr(self, "status_lbl", None)
+        if lbl is None or not lbl.winfo_exists():
+            return                      # window already closing
         style = {"info": "Status.TLabel", "warn": "StatusWarn.TLabel",
                  "ok": "StatusOk.TLabel", "error": "StatusErr.TLabel"}[kind]
-        self.status_lbl.configure(text=msg, style=style)
+        lbl.configure(text=msg, style=style)
 
     def _mirror_changed(self):
         self._save_settings()
@@ -1788,6 +1791,10 @@ class App(AdvancedMixin, tk.Tk):
         return self.slot_paths[0]
 
     def _populate_slot_box(self):
+        # closing the window with a modal dialog open lets the pending edit
+        # callback run after the header is gone; nothing to update then
+        if not getattr(self, "slot_box", None) or not self.slot_box.winfo_exists():
+            return
         labels = []
         for pth in self.slot_paths:
             sv = self.files.get(pth)
