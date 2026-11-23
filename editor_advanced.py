@@ -1631,14 +1631,27 @@ def _build_mounts(self):
     right = ttk.Frame(pane, style="Card.TFrame", padding=12)
     pane.add(right, weight=2)
     ttk.Label(right, text='此存档的资源池', style="CardH3.TLabel").pack(anchor="w")
-    self.pool_tree = scrolled_tree(right, columns=("kind", "id"), show="tree headings",
+    with open(os.path.join(HERE, "legion_details.json"), encoding="utf-8") as source:
+        self.legion_details = json.load(source)
+    self.pool_tree = scrolled_tree(right, columns=("rank", "owner"), show="tree headings",
                                    selectmode="browse")
-    self.pool_tree.heading("#0", text='条目', anchor="w")
-    self.pool_tree.heading("kind", text='种类', anchor="w")
-    self.pool_tree.heading("id", text='记录编号', anchor="w")
-    self.pool_tree.column("#0", width=90)
-    self.pool_tree.column("kind", width=80)
-    self.pool_tree.column("id", width=190)
+    for column, title, width in (("#0", "军团兵／坐骑", 180), ("rank", "指挥", 55),
+                                 ("owner", "配属单位", 110)):
+        self.pool_tree.heading(column, text=title, anchor="w")
+        self.pool_tree.column(column, width=width)
+    self.mount_detail = tk.StringVar(master=right)
+    detail = ttk.Label(right, textvariable=self.mount_detail, style="CardMuted.TLabel",
+                       justify="left", wraplength=350)
+    detail.pack(side="bottom", fill="x", pady=(8, 0))
+    detail.bind("<Configure>", lambda e: detail.configure(wraplength=max(100, e.width - 4)))
+
+    def show_detail(event):
+        selected = event.widget.selection()
+        if selected:
+            self.mount_detail.set(self._mount_details.get((event.widget, selected[0]), ""))
+
+    for tree in (self.pool_tree, self.mount_tree):
+        tree.bind("<<TreeviewSelect>>", show_detail)
     self.pool_tree.container.pack(fill="both", expand=True, pady=(6, 6))
     row = ttk.Frame(right, style="Card.TFrame")
     row.pack(fill="x")
@@ -1656,26 +1669,40 @@ def refresh_mounts(self):
     self.mount_tree.delete(*self.mount_tree.get_children())
     self.pool_tree.delete(*self.pool_tree.get_children())
     self._mount_rows, self._pool_rows = {}, {}
+    self._mount_details = {}
+    self.mount_detail.set("")
     if not self.sv:
         return
-    bat_by_unit = {}
-    for l in layer.battalions(self.sv.payload):
-        bat_by_unit.setdefault(l.owner, l)
+
+    def describe(legion):
+        key = f"{legion.id:016x}"
+        return self.legion_details.get(key, (f"未知军团兵 0x{key}", "—", ""))
+
+    equipped = {}
     for u in layer.find_units(self.sv.payload):
         g = layer.unit_gear(self.sv.payload, u.uid)
-        bat = bat_by_unit.get((g.unit_number if g else -1))
-        bat_txt = (f"军团兵 第 {bat.row} 行") if bat else "—"
+        bat = g.legion if g else None
+        bat_txt = "—"
+        if bat:
+            bat_txt, _, info = describe(bat)
+            equipped[(bat.id, g.unit_number)] = u.name
         mnt = (f"坐骑 #{g.ride.serial}") if (g and g.ride) else "—"
         iid = self.mount_tree.insert("", "end", text=u.name,
                                      values=(bat_txt, mnt))
         self._mount_rows[iid] = u.uid
-    for i, l in enumerate(layer.battalions(self.sv.payload)):
-        iid = self.pool_tree.insert("", "end", text=f"#{i + 1}", values=("军团兵", hex(l.id)),
-                                    iid="b%d" % i)
+        if bat:
+            self._mount_details[self.mount_tree, iid] = f"{bat_txt}　·　{u.name}\n{info}"
+    for i, legion in enumerate(layer.battalions(self.sv.payload)):
+        name, rank, info = describe(legion)
+        owner = equipped.get((legion.id, legion.owner),
+                             f"归属待核对（{legion.owner}）" if legion.owner else "未配属")
+        iid = self.pool_tree.insert("", "end", text=name, values=(rank, owner), iid=f"b{i}")
+        self._mount_details[self.pool_tree, iid] = f"{name}　·　{owner}\n{info}"
         self._pool_rows[iid] = ("battalion", i)
     for i, r in enumerate(layer.mounts(self.sv.payload)):
-        iid = self.pool_tree.insert("", "end", text=f"#{i + 1}", values=("坐骑", hex(r.id)),
-                                    iid="m%d" % i)
+        iid = self.pool_tree.insert("", "end", text=r.name or f"坐骑 #{r.serial}",
+                                    values=("—", "—"), iid=f"m{i}")
+        self._mount_details[self.pool_tree, iid] = f"坐骑 #{r.serial}　记录编号 {hex(r.id)}"
         self._pool_rows[iid] = ("mount", i)
 
 
@@ -1714,7 +1741,7 @@ def assign_battalion(self, clear: bool = False):
         return core.with_gear(f, u, gg, ride, legion)
 
     self._core_edit(edit, "已清除军团兵" if clear
-                    else (f"军团兵 → 第 {legion.row} 行"))
+                    else f"已配属 {self.pool_tree.item(psel[0], 'text')}")
 
 
 def remove_battalion(self):
