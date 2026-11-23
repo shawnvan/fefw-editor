@@ -39,8 +39,27 @@ def strip_tags(s: str) -> str:
     return "".join(out)
 
 
-def read(path: str) -> dict[str, str]:
-    """{label: text} for one message file, control tags stripped."""
+def _utf8_argument_template(blob: bytes) -> str:
+    """Decode an item-help entry, preserving indexed FEFW argument tags."""
+    parts = []
+    start = i = 0
+    while i < len(blob) and blob[i]:
+        if (blob[i:i + 3] == b"\x0e\x01\x00" and i + 7 <= len(blob)
+                and blob[i + 4:i + 7] == b"\x00\x00\x00"):
+            parts.append(blob[start:i].decode("utf-8", "replace"))
+            parts.append("{%d}" % blob[i + 3])
+            i += 7
+            start = i
+        elif blob[i] in (0x0e, 0x0f):
+            raise ValueError(f"Unsupported item-help tag at byte {i}")
+        else:
+            i += 1
+    parts.append(blob[start:i].decode("utf-8", "replace"))
+    return "".join(parts)
+
+
+def read(path: str, *, argument_labels: set[str] | None = None) -> dict[str, str]:
+    """Read messages, optionally retaining indexed arguments for selected UTF-8 labels."""
     raw = _raw(path)
     utf16 = raw[0x0C:0x0E] == b"\xff\xfe"
     lbl = raw.find(b"LBL1")
@@ -64,10 +83,15 @@ def read(path: str) -> dict[str, str]:
     # stops inside the first tag (its group/type are often 0), so a name that
     # opens with furigana came back empty and never matched.
     ends = offs[1:] + [struct.unpack_from("<I", raw, txt + 4)[0]]
+    argument_indices = {labels[label] for label in argument_labels or () if label in labels}
     texts = []
     for k in range(count):
         at = tbody + offs[k]
-        if utf16:
+        if k in argument_indices:
+            if utf16:
+                raise ValueError("Item-help argument parsing requires UTF-8 messages")
+            s = _utf8_argument_template(raw[at:tbody + ends[k]])
+        elif utf16:
             s = raw[at:tbody + ends[k]].decode("utf-16-le", "replace")
             s = strip_tags(s).split("\x00")[0]
         else:

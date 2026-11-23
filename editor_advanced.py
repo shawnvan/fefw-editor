@@ -20,6 +20,7 @@ import fefw_core as core
 import supports
 from ui_util import ScrollableFrame
 from fefw_save import chinese_name, is_slot_name, item_ids, item_label, unit_ids
+from weapon_stats import item_preview_text
 from map_page import MapPageMixin
 from tutorial_page import TutorialPageMixin
 from blessing_page import BlessingPageMixin
@@ -220,7 +221,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
 
     # -------------------------------------------------------- pick a value
     def _picker(self, title: str, rows, current: int | None = None, *,
-                search_terms=None, secondary_title="内部编号"):
+                search_terms=None, secondary_title="内部编号", preview_text=None):
         """Modal searchable single-choice list. rows: [(key, primary, secondary)]."""
         win = tk.Toplevel(self)
         win.title(title)
@@ -238,8 +239,6 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         tree.column("sec", width=210)
         sb = ttk.Scrollbar(win, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=sb.set)
-        tree.pack(side="left", fill="both", expand=True, padx=(10, 0))
-        sb.pack(side="left", fill="y", padx=(0, 10))
         result = {"key": None}
         iids: dict[str, object] = {}
 
@@ -274,6 +273,18 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         bar.pack(side="bottom", fill="x")
         ttk.Button(bar, text='使用此项', style="Accent.TButton", command=ok).pack(side="right")
         ttk.Button(bar, text='取消', command=win.destroy).pack(side="right", padx=(0, 8))
+        if preview_text is not None:
+            preview = ttk.Label(win, justify="left", wraplength=520)
+            preview.pack(side="bottom", fill="x", padx=10)
+
+            def update_preview(_event=None):
+                sel = tree.selection()
+                key = iids.get(sel[0]) if sel else None
+                preview.configure(text=preview_text(key))
+
+            tree.bind("<<TreeviewSelect>>", update_preview)
+        tree.pack(side="left", fill="both", expand=True, padx=(10, 0))
+        sb.pack(side="left", fill="y", padx=(0, 10))
         fill()
         ent.focus_set()
         self.wait_window(win)
@@ -1797,7 +1808,7 @@ def add_convoy_item_ui(self):
         (internal_rows if internal else rows).append((iid, label, jp))
         search_terms[iid] = blob
     iid = self._picker("添加到道具袋", rows + internal_rows, search_terms=search_terms,
-                       secondary_title="日文／内部键名")
+                       secondary_title="日文／内部键名", preview_text=item_preview_text)
     if iid is None:
         return
     qty = _ask_number(self, "数量", "要添加多少个？", 1, 999)

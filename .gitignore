@@ -11,5 +11,6 @@ dist/
 # local game data dumps and generated reports (names json is committed)
 CNzh/
 JPja/
+/GameData/
 chinese_names_report.csv
 .DS_Store

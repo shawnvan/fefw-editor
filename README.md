@@ -248,6 +248,15 @@ Lists grow and shrink safely: the save is a tree of records that point at each
 other, and when a list changes size every pointer after it is rewritten and the
 result is read back before anything is written.
 
+Select a weapon in the convoy, item catalogue or Add Item dialog to see its
+base might, hit, crit, weight, range, durability and any direct stat bonuses.
+Weapons with a linked combat art show its effect, range and durability cost.
+Forgeable weapons show their next upgrade, required material, fee and any story condition.
+Select a consumable to see its effect and base number of uses.
+Shields, accessories and character-specific gear show their effects and bonuses.
+Materials, gifts and quest items show their in-game descriptions. Valuables
+also show their base sell price when available.
+
 ![Convoy page](docs/convoy.png)
 
 ## The convoy

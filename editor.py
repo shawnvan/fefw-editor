@@ -34,6 +34,7 @@ from fefw_layer import (GRADES, ITEM_KINDS, SKILL_NAMES, SKILL_THRESHOLDS,  # no
                         item_kind, item_label, job_ids, job_name, next_threshold, pick_live)
 import fefw_layer as layer  # noqa: E402
 import supports  # noqa: E402  (support pair chart + conversation flags)
+from weapon_stats import item_preview_text  # noqa: E402
 from zh_names import CHARACTERS  # noqa: E402
 import fefw_core as core  # noqa: E402  (save object tree: resizing edits)
 from editor_advanced import AdvancedMixin  # noqa: E402  (Player / Classes / Flags pages)
@@ -312,6 +313,9 @@ class ItemPicker(ttk.Frame):
         ttk.Label(bottom, text='也可双击或按回车',
                   style="CardFaint.TLabel").pack(side="left")
 
+        self.item_preview = ttk.Label(self, style="CardMuted.TLabel", justify="left",
+                                        wraplength=340)
+        self.item_preview.pack(side="bottom", fill="x")
         self.tree = scrolled_tree(self, columns=("kind", "jp", "id"), show="tree headings",
                                   selectmode="browse", height=6)
         self.tree.heading("#0", text='道具', anchor="w")
@@ -325,7 +329,11 @@ class ItemPicker(ttk.Frame):
         self.tree.container.pack(fill="both", expand=True, pady=(8, 8))
         self.tree.bind("<Double-1>", lambda e: self._activate())
         self.tree.bind("<Return>", lambda e: self._activate())
+        self.tree.bind("<<TreeviewSelect>>", self._update_item_preview)
         self.refresh()
+
+    def _update_item_preview(self, _event=None):
+        self.item_preview.configure(text=item_preview_text(self.selected()))
 
     def _to_list(self, _e=None):
         kids = self.tree.get_children()
@@ -405,6 +413,7 @@ class ItemPicker(ttk.Frame):
         if prev and self.tree.exists(prev[0]):
             self.tree.selection_set(prev[0])
             self.tree.see(prev[0])
+        self._update_item_preview()
         more = len(hits) - self._result_limit
         self.count_lbl.configure(text=f"共 {len(hits):,} 项"
                                  + (f" · 显示前 {self._result_limit}" if more > 0 else ""))
@@ -451,6 +460,7 @@ class App(AdvancedMixin, tk.Tk):
         self.gold_auto = False              # gold found by its record, not by search
         self._gold_cands: list[int] = []
         self._inv_items: list[tuple[int, int, int]] = []
+        self._inv_spells: list[tuple[int, int, int]] = []
         self._conv_rows: list = []          # ConvoyRow, in slot order
         self._skill_rows: list = []
         self._shown: dict = {}
@@ -1147,6 +1157,9 @@ class App(AdvancedMixin, tk.Tk):
                    command=self.add_item).pack(side="left")
         ttk.Button(ib, text='移除道具', style="Small.TButton",
                    command=self.remove_item).pack(side="left", padx=(6, 0))
+        self.inv_item_preview = ttk.Label(left, style="CardMuted.TLabel", justify="left",
+                                           wraplength=340)
+        self.inv_item_preview.pack(side="bottom", fill="x")
         self.inv_tree = scrolled_tree(left, columns=("kind",), show="tree headings",
                                       selectmode="browse", height=6)
         self.inv_tree.heading("#0", text='道具', anchor="w")
@@ -1221,6 +1234,9 @@ class App(AdvancedMixin, tk.Tk):
                        "“添加”会拒绝。“移除”清空一个槽位；列表保持槽位总数不变，其后"
                        "的内容都会安全移动。“所有材料…”会以数量 1 备齐每种矿石、肉、鱼和植物。"
                   ).pack(side="bottom", anchor="w", pady=(8, 0))
+        self.conv_item_preview = ttk.Label(left, style="CardMuted.TLabel", justify="left",
+                                             wraplength=340)
+        self.conv_item_preview.pack(side="bottom", fill="x")
         self.conv_tree = scrolled_tree(left, columns=("kind", "qty"), show="tree headings",
                                        selectmode="extended", height=6)
         self.conv_tree.heading("#0", text='槽位 · 道具', anchor="w")
@@ -2377,7 +2393,9 @@ class App(AdvancedMixin, tk.Tk):
         tree.delete(*tree.get_children())
         u = self._current()
         self._inv_items = []
+        self._inv_spells = []
         if not u:
+            self._inv_lock()
             return
         inv = u.inventory(bytes(self.sv.payload))
         names = item_ids()
@@ -2387,6 +2405,7 @@ class App(AdvancedMixin, tk.Tk):
             self._inv_lock()
             return
         self._inv_items = inv.items
+        self._inv_spells = inv.spells
         for n, (_off, iid, _tag) in enumerate(inv.items):
             meta = names.get(iid, {})
             kind = item_kind(meta) if meta else "Item"
@@ -2403,7 +2422,7 @@ class App(AdvancedMixin, tk.Tk):
                 tree.insert("", "end", iid=f"s{n}", text="      " + item_label(iid, meta),
                             image=self._dot(KIND_COLORS["Tome"]), values=("魔法",),
                             tags=("empty",))
-        if prev and tree.exists(prev[0]) and prev[0].startswith("i"):
+        if prev and tree.exists(prev[0]) and prev[0] not in ("none", "spells"):
             tree.selection_set(prev[0])
         self._inv_lock()
 
@@ -2415,9 +2434,18 @@ class App(AdvancedMixin, tk.Tk):
 
     def _inv_lock(self):
         idx = self._inv_slot()
+        iid = None
         cat = None
         if idx is not None and idx < len(self._inv_items):
-            cat = item_category(item_ids().get(self._inv_items[idx][1], {}))
+            iid = self._inv_items[idx][1]
+            cat = item_category(item_ids().get(iid, {}))
+        else:
+            selection = self.inv_tree.selection()
+            if selection and selection[0].startswith("s") and selection[0][1:].isdigit():
+                spell_index = int(selection[0][1:])
+                if spell_index < len(self._inv_spells):
+                    iid = self._inv_spells[spell_index][1]
+        self.inv_item_preview.configure(text=item_preview_text(iid))
         self.inv_picker.set_lock(cat, self.allow_any_item.get())
 
     def replace_item(self, new_id: int):
@@ -2588,6 +2616,7 @@ class App(AdvancedMixin, tk.Tk):
         if keep:
             tree.selection_set(keep)
             tree.see(keep[-1])
+        self._update_conv_item_preview()
 
     def repair_convoy_ui(self):
         got = layer.salvage_convoy(bytes(self.sv.payload)) if self.sv else None
@@ -2615,11 +2644,15 @@ class App(AdvancedMixin, tk.Tk):
         return sorted(int(i) for i in self.conv_tree.selection() if i.isdigit())
 
     def _conv_row_picked(self, _e=None):
+        row = self._update_conv_item_preview()
+        if row:
+            self.qty_var.set(str(row.qty))
+
+    def _update_conv_item_preview(self):
         slots = self._conv_selected()
-        if len(slots) == 1:
-            row = self._conv_row(slots[0])
-            if row:
-                self.qty_var.set(str(row.qty))
+        row = self._conv_row(slots[0]) if len(slots) == 1 else None
+        self.conv_item_preview.configure(text=item_preview_text(row.iid if row else None))
+        return row
 
     def _qty(self) -> int | None:
         v = self._num(self.qty_var, 1, QTY_MAX)

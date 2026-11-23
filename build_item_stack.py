@@ -35,23 +35,47 @@ def _str(d, ptr):
     return d[i:j].decode("utf-8", "replace")
 
 
-def rows_of(d: bytes):
-    """Yield (row key, {field: u8 value}) for the first sheet of a GameData table."""
+def raw_rows_of(d: bytes, *, keep_duplicate_fields=False):
+    """Yield (row key, row offset, field layout) for the first GameData sheet."""
     fields, i = {}, 32
+    record_end = 0
     while i + 32 <= len(d):
         np_, tp = U64(d, i), U64(d, i + 8)
         size, off = I32(d, i + 24), I32(d, i + 28)
         if not np_ or not tp or not 0 < size <= 4096:
             break
-        fields.setdefault(_str(d, np_), (_str(d, tp), size, off))
+        name = _str(d, np_)
+        if keep_duplicate_fields and name in fields:
+            first_name = name
+            occurrence = 2
+            while name in fields:
+                name = f"{first_name}#{occurrence}"
+                occurrence += 1
+        fields.setdefault(name, (_str(d, tp), size, off))
+        record_end = max(record_end, off + size)
         i += 32
-    rec = (max(o + s for _t, s, o in fields.values()) + 7) & ~7
+    if not record_end:
+        return
+    rec = (record_end + 7) & ~7
     idx = 0
     while i + rec <= len(d) and U64(d, i) == 0 and U16(d, i + 16) == idx:
-        yield _str(d, U64(d, i + 8)), {n: d[i + o] for n, (t, s, o) in fields.items()
-                                       if t in ("u8", "b8")}
+        yield _str(d, U64(d, i + 8)), i, fields
         i += rec
         idx += 1
+
+
+def string_refs(d: bytes, offset: int) -> list[str]:
+    """Read an array of pointers to strings, such as a table's help arguments."""
+    count, stride, pointer = struct.unpack_from("<HH4xQ", d, offset)
+    return [_str(d, U64(d, 32 + pointer + index * stride)) for index in range(count)]
+
+
+def rows_of(d: bytes):
+    """Yield (row key, {field: u8 value}) for the first sheet of a GameData table."""
+    for key, offset, fields in raw_rows_of(d):
+        yield key, {name: d[offset + field_offset]
+                    for name, (kind, _, field_offset) in fields.items()
+                    if kind in ("u8", "b8")}
 
 
 def fnv1_64_low32(text: str) -> int:
