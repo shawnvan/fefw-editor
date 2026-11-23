@@ -1,9 +1,24 @@
 # Fortune's Weave Save Editor
 
-A save editor for **Fire Emblem: Fortune's Weave** saves made by the Eden
-Switch emulator. It edits your playthrough (units, items, convoy, gold, skills,
-flags) and leaves the game itself alone. Plain Python + Tkinter, one extra
-library, or a ready-made Windows `.exe`.
+本项目是 [Antiadvocate/fefw-editor](https://github.com/Antiadvocate/fefw-editor)
+的简体中文增强版，基于上游 **1.4.0**，用于编辑 Eden 模拟器中的
+**Fire Emblem: Fortune's Weave** 存档。上游提供存档读写和编辑功能，
+这个 Fork 补充了中文界面、游戏术语和道具详情。
+
+## 简体中文增强版
+
+- **简体中文界面与游戏术语**。单位、持有物品、道具袋、兵种、支援、剧情进度等页面均提供中文界面。
+  角色、道具、战技、特技和地点名称优先采用可匹配的官方简体中文游戏文本。
+  道具目录支持按中文、英文、日文或道具编号查找；
+  「标记」可按需显示英文名和原始键名。
+- **武器数值、战技和锻造预览**。查看威力、命中、必杀、重量、射程、基础耐久与属性加成，
+  以及关联战技的效果和耐久消耗。可锻造的武器还会显示下一阶、所需材料、费用和剧情条件（如有）。
+- **消耗品、装备、材料与任务道具说明**。查看药品回复量和基础使用次数、
+  盾牌和饰品加成、任务用途、兑换数量及换金品卖价。
+  在「单位 → 持有物品」「道具袋」「道具目录」或「添加道具」中选中一项即可查看详情。
+
+中文名称和道具详情随项目提供，日常使用无需另行导出游戏数据。
+见[运行说明](#running-from-source)和[中文名称对照](docs/中文名称对照.md)。
 
 > **Unofficial and reverse-engineered.** Close the game before saving and keep
 > your own backup. The first save next to each slot also keeps the untouched
@@ -146,9 +161,11 @@ If you know where any of these live, contributions are welcome.
 
 ## Download
 
-The [upstream releases](https://github.com/Antiadvocate/fefw-editor/releases/latest)
-provide Windows and Linux builds. Their included features depend on the release;
-run this branch from source to use everything listed above.
+For this Simplified Chinese edition, use the
+[fork's Releases page](https://github.com/shawnvan/fefw-editor/releases) or
+[run it from source](#running-from-source). The
+[upstream releases](https://github.com/Antiadvocate/fefw-editor/releases/latest)
+provide builds of the original editor.
 
 * **Windows:** unzip the Windows package and run `FEFW Save Editor.exe`.
   Python is not required. The executable is not code-signed, so SmartScreen
@@ -352,8 +369,8 @@ PNGs into `icons/items/` and `icons/units/` to use real images; see
 
 ### Chinese names from your own game data
 
-The bundled Chinese display names are incomplete. If you have a romfs dump
-with `Msg/JPja` and the game's Simplified Chinese message folder, run:
+Chinese names are bundled with the editor. To rebuild the mappings from your
+own romfs dump, use `Msg/JPja` and the game's Simplified Chinese message folder:
 
 ```
 python build_chinese_names.py <romfs folder> <Chinese language folder name>
