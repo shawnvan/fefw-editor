@@ -917,24 +917,77 @@ def party_store(f: SaveFile):
     return (convoy_at(f), r, l)
 
 
-def rides(f: SaveFile, at: int) -> list:
+def _read_ride_slots(f: SaveFile, at: int, end: int, count: int):
     p = f.payload
-    end = f.ptr(at)
-    out = []
-    if end - at <= 8:
-        return out
-    n = struct.unpack_from("<H", p, at + 5)[0]
     i = at + 7
-    for _ in range(n):
+    for _ in range(count):
         if i >= end:
-            raise SaveError("the mount list at 0x%X ends early" % at)
+            raise SaveError("坐骑资源池槽位不完整。")
         if p[i] == 0:
+            yield i, i + 1, None
             i += 1
             continue
-        r, i = Ride.read(p, i, end)
+        r, stop = Ride.read(p, i, end)
         if r is None:
-            raise SaveError("unknown mount record at 0x%X" % i)
-        out.append(r)
+            raise SaveError("无法识别坐骑资源池中的记录。")
+        yield i, stop, r
+        i = stop
+
+
+def ride_slots(f: SaveFile, at: int) -> list[tuple[int, int, Ride | None]]:
+    """Validate an editable pool and retain each slot's original byte bounds."""
+    p = f.payload
+    if not 0 <= at <= len(p) - 8:
+        raise SaveError("无法定位坐骑资源池。")
+    end = f.ptr(at)
+    if end == at + 8 and not any(p[at + 4:end]):
+        return []
+    if (not at + 7 < end <= len(p) or end % 4 or p[at + 4] != 0
+            or f.u16(at + 5) != RIDE_CAPACITY):
+        raise SaveError("无法识别此存档的坐骑资源池格式。")
+    out = list(_read_ride_slots(f, at, end, RIDE_CAPACITY))
+    padding = out[-1][1]
+    if end - padding > 3 or any(p[padding:end]):
+        raise SaveError("坐骑资源池末尾有未知数据。")
+    return out
+
+
+def rides(f: SaveFile, at: int) -> list:
+    end = f.ptr(at)
+    if end - at <= 8:
+        return []
+    return [ride for _, _, ride in _read_ride_slots(f, at, end, f.u16(at + 5)) if ride is not None]
+
+
+def with_added_ride(f: SaveFile, at: int, ride: Ride) -> bytearray:
+    slots = ride_slots(f, at)
+    if not slots:
+        raise SaveError("主坐骑资源池尚未初始化。请使用已有主坐骑池的存档。")
+    free = next((i for i, (_, _, record) in enumerate(slots) if record is None), None)
+    if free is None:
+        raise SaveError("坐骑资源池已满。")
+    return _replace_ride_slot(f, at, slots, free, ride)
+
+
+def with_removed_ride(f: SaveFile, at: int, index: int) -> bytearray:
+    slots = ride_slots(f, at)
+    if not 0 <= index < len(slots) or slots[index][2] is None:
+        raise SaveError("所选坐骑已不在资源池中。")
+    if slots[index][2].owner:
+        raise SaveError("所选坐骑仍有配属单位。")
+    return _replace_ride_slot(f, at, slots, index, None)
+
+
+def _replace_ride_slot(f, at, slots, index, ride):
+    p = f.payload
+    start, stop, _ = slots[index]
+    record = ride.bytes() if ride is not None else b"\0"
+    body = p[at + 4:start] + record + p[stop:slots[-1][1]]
+    out = _replace_list(f, at, body)
+    expected = [record for _, _, record in slots]
+    expected[index] = ride
+    if [record for _, _, record in ride_slots(SaveFile(out), at)] != expected:
+        raise SaveError("坐骑资源池未通过读回校验。")
     return out
 
 
@@ -1375,6 +1428,24 @@ def with_gear(f: SaveFile, u: SaveUnit, g: Gear, ride, legion) -> bytearray:
     if node < 0:
         raise SaveError("the unit's record wasn't found")
     return tr.splice(node, g.ride_at, u.end - g.ride_at, bytes(body))
+
+
+def with_unit_ride(f: SaveFile, unit: SaveUnit, gear: Gear, record: bytes) -> bytearray:
+    """Replace only the ride and recalculate padding after the known unit tail."""
+    p = f.payload
+    logical_end = unit.end
+    while logical_end > unit.end - 3 and p[logical_end - 1] == 0:
+        logical_end -= 1
+    if (p[unit.start + 5] != 0 or logical_end <= gear.legion_at + gear.legion_len
+            or p[logical_end - 2:logical_end] != b"\xff\xff"):
+        raise SaveError("此单位的记录末尾格式尚未确认，无法安全修改坐骑。")
+    body = record + p[gear.legion_at:logical_end]
+    body += bytes(-(gear.ride_at + len(body)) % 4)
+    tree = f.tree()
+    node = tree.node_at(unit.start)
+    if node < 0:
+        raise SaveError("无法定位单位的坐骑记录。")
+    return tree.splice(node, gear.ride_at, unit.end - gear.ride_at, body)
 
 
 def reliquary_store(f: SaveFile):

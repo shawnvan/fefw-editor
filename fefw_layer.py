@@ -16,6 +16,8 @@ import os
 import re
 import struct
 import unicodedata
+from dataclasses import replace
+from functools import lru_cache
 
 import fefw_core as core
 from fefw_save import *                      # noqa: F401,F403  (ids, labels, catalogue…)
@@ -775,6 +777,171 @@ def mounts(payload) -> list:
     f = core.SaveFile(bytes(payload))
     st = core.party_store(f)
     return core.rides(f, st[1]) if st else []
+
+
+@lru_cache(maxsize=1)
+def ride_catalogue():
+    with open(os.path.join(DATA_DIR, "ride_details.json"), encoding="utf-8") as source:
+        return json.load(source)
+
+
+def _ride_pools(f):
+    store = core.party_store(f)
+    if store is None:
+        raise core.SaveError("无法定位主坐骑资源池。")
+    at = store[1]
+    pools = {at: core.ride_slots(f, at)}
+    secondary = core.reliquary_store(f)
+    if secondary and secondary[1] != at:
+        pools[secondary[1]] = core.ride_slots(f, secondary[1])
+    return pools
+
+
+def _ride_edit_pools(f):
+    import unit_entries
+
+    if unit_entries.context(f) not in ("free-time", "chapter-start"):
+        raise core.SaveError("请在自由行动或章节开始存档中编辑坐骑。")
+    return _ride_pools(f)
+
+
+def with_added_ride(f: core.SaveFile, ride_id: int) -> bytearray:
+    import unit_entries
+
+    details = ride_catalogue().get(f"{ride_id:016x}")
+    if not details or not details.get("addable"):
+        raise core.SaveError("此坐骑类型无法从目录添加。")
+    pools = _ride_edit_pools(f)
+    at = next(iter(pools))
+    if not pools[at]:
+        raise core.SaveError("主坐骑资源池尚未初始化。请使用已有主坐骑池的存档。")
+    used = {ride.serial for slots in pools.values() for _, _, ride in slots if ride is not None}
+    used.update(gear.ride.serial for _, _, _, rows in unit_entries.pool_groups(f)
+                for _, gear in rows if gear.ride is not None)
+    serial = next((number for number in range(1, 255) if number not in used), None)
+    if serial is None:
+        raise core.SaveError("没有可用的坐骑个体序号。")
+    # Inferred starter record. Wild capture flags and skill selection still
+    # need a native Cai save. Empty progress is safer than copying another ride.
+    return core.with_added_ride(f, at, core.Ride(ride_id, 0, serial, 0, 0, "", b"", 0))
+
+
+def with_ride_assignment(f: core.SaveFile, uid: int,
+                         identity: tuple[int, int] | None) -> bytearray:
+    """Set or clear a ride and update the pool and unit copies together."""
+    import unit_entries
+
+    pools = _ride_edit_pools(f)
+    pool = [entry for slots in pools.values() for entry in slots if entry[2] is not None]
+    roster = unit_entries.roster(f)
+    targets = [(u, gear) for u, gear in roster if u.person == (uid & 0xFFFFFFFF)]
+    if len(targets) != 1:
+        raise core.SaveError("未找到唯一的我方单位记录。")
+    target, target_gear = targets[0]
+    number = target_gear.unit_number
+    by_number = {}
+    for unit, gear in roster:
+        by_number.setdefault(gear.unit_number, []).append((unit, gear))
+    if not 1 <= number <= 254 or len(by_number[number]) != 1:
+        raise core.SaveError("所选单位的编号无效或重复。")
+
+    def key(ride):
+        return ride.id, ride.serial
+
+    references = {}
+    for unit, gear in roster:
+        if gear.ride is not None:
+            references.setdefault(key(gear.ride), []).append((unit, gear))
+
+    def pool_entry(ride_key):
+        hits = [entry for entry in pool if key(entry[2]) == ride_key]
+        if len(hits) != 1:
+            raise core.SaveError("无法在主资源池和备用装备库中唯一识别该坐骑。")
+        return hits[0]
+
+    def current_entry(unit, gear):
+        owned = [entry for entry in pool if entry[2].owner == gear.unit_number]
+        if gear.ride is None and not owned:
+            return None
+        if (gear.ride is None or len(owned) != 1 or owned[0][2] != gear.ride
+                or references.get(key(gear.ride)) != [(unit, gear)]
+                or pool_entry(key(gear.ride)) != owned[0]):
+            raise core.SaveError("单位的坐骑归属与装备库不一致，请先在游戏内核对。")
+        return owned[0]
+
+    previous = current_entry(target, target_gear)
+    owners = {previous[0]: 0} if previous else {}
+    updates = {target.start: (target, target_gear, None, b"\0")}
+    if identity is not None:
+        start, stop, selected = pool_entry(identity)
+        details = ride_catalogue().get(f"{selected.id:016x}", {})
+        if f"{target.klass:08x}" not in details.get("classes", ()):
+            species = details.get("type", "未知种类")
+            raise core.SaveError(f"当前兵种「{job_name(target.klass)}」无法配属「{species}」坐骑。")
+        refs = references.get(identity, [])
+        if selected.owner:
+            holders = by_number.get(selected.owner, [])
+            if len(holders) != 1 or refs != holders or current_entry(*holders[0]) != (start, stop, selected):
+                raise core.SaveError("所选坐骑的原配属记录不一致。")
+            if selected.owner == number:
+                return f.payload
+            holder, gear = holders[0]
+            updates[holder.start] = (holder, gear, None, b"\0")
+        elif refs:
+            raise core.SaveError("所选坐骑仍被单位引用，请先在游戏内核对。")
+
+        record = bytearray(f.payload[start:stop])
+        record[9] = number
+        owners[start] = number
+        updates[target.start] = (target, target_gear, replace(selected, owner=number), bytes(record))
+    elif previous is None:
+        return f.payload
+
+    out = f.copy()
+    for start, owner in owners.items():
+        out.payload[start + 9] = owner
+    for _, (unit, gear, _, record) in sorted(updates.items(), reverse=True):
+        out = core.SaveFile(core.with_unit_ride(out, unit, gear, record))
+
+    expected_pools = [
+        [None if ride is None else replace(ride, owner=owners.get(start, ride.owner))
+         for start, _, ride in slots]
+        for slots in pools.values()
+    ]
+    actual_pools = [[ride for _, _, ride in slots] for slots in _ride_pools(out).values()]
+    expected_gear = [(u.person, g.unit_number, updates[u.start][2] if u.start in updates else g.ride, g.legion)
+                     for u, g in roster]
+    actual_gear = [(u.person, g.unit_number, g.ride, g.legion) for u, g in unit_entries.roster(out)]
+    if actual_pools != expected_pools or actual_gear != expected_gear:
+        raise core.SaveError("坐骑归属或单位装备未通过读回校验。")
+    return out.payload
+
+
+def with_removed_ride(f: core.SaveFile, identity: tuple[int, int]) -> bytearray:
+    """Clear the matching unit reference and remove the mount from its own pool."""
+    import unit_entries
+
+    pools = _ride_edit_pools(f)
+    matches = [(pool_index, slot_index, ride)
+               for pool_index, slots in enumerate(pools.values())
+               for slot_index, (_, _, ride) in enumerate(slots)
+               if ride is not None and (ride.id, ride.serial) == identity]
+    if len(matches) != 1:
+        raise core.SaveError("无法在资源池中唯一识别要移除的坐骑。")
+    pool_index, slot_index, ride = matches[0]
+    holders = [(u, gear) for _, _, _, rows in unit_entries.pool_groups(f) for u, gear in rows
+               if gear.ride is not None and (gear.ride.id, gear.ride.serial) == identity]
+    if ride.owner:
+        if len(holders) != 1 or holders[0][1].ride != ride or holders[0][1].unit_number != ride.owner:
+            raise core.SaveError("坐骑归属与单位装备不一致，无法移除。")
+        unit, _ = holders[0]
+        f = core.SaveFile(with_ride_assignment(f, unit.person, None))
+        pools = _ride_pools(f)
+    elif holders:
+        raise core.SaveError("所选坐骑仍被单位引用，无法移除。")
+
+    # Unequipping can move the pool, but it keeps the pool and slot order.
+    return core.with_removed_ride(f, list(pools)[pool_index], slot_index)
 
 
 def add_battalion(payload: bytearray, legion) -> bool:

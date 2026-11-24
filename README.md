@@ -16,11 +16,15 @@
 - **消耗品、装备、材料与任务道具说明**。查看药品回复量和基础使用次数、
   盾牌和饰品加成、任务用途、兑换数量及换金品卖价。
   在「单位 → 持有物品」「道具袋」「道具目录」或「添加道具」中选中一项即可查看详情。
-- **军团目录**。在「坐骑 → 军团目录」搜索军团兵，查看指挥等级、编制、价格、
-  计策、属性加成和装备。无需打开存档即可浏览。
+- **浏览军团和坐骑**。在「坐骑 → 添加军团」可查看指挥等级、编制、价格、计策、属性和装备。
+  在「坐骑 → 添加坐骑」可查看种类、各等级加成、骑乘特技及其分阶段效果。无需打开存档即可浏览。
+- **添加和配属坐骑（实验）**。在自由行动或章节开始存档中，「添加坐骑」可将野生坐骑加入已初始化的主资源池。
+  「分配坐骑」支持主资源池和备用装备库，按当前兵种匹配种类。「卸下坐骑」会将坐骑归还原装备库。
+  在右侧选中坐骑后，「从资源池移除」可删除该坐骑，并解除已有配属。
+  新坐骑的初始状态和游戏内生效情况尚待验证。
 - **添加军团兵**。打开军团资源池已初始化的存档，在「坐骑 → 添加军团」选中军团，
   点击「加入资源池」，再保存。新增军团在当前存档中显示为「未配属」，可进游戏分配。
-- **配属军团兵**。在「坐骑」左侧选择单位，右侧选择军团，再点「分配给单位」。
+- **配属军团兵**。在「坐骑」左侧选择单位，右侧选择军团，再点「分配军团」。
   改派会卸下原持有者的这支军团，目标单位原有的军团会回到资源池。
   也可以选中单位后点击「卸下军团」。支持自由行动和章节开始存档。
 
@@ -46,7 +50,7 @@
 | **Player** | Gold, renown EXP and Karma Shards; difficulty, mode and playthrough number; Part 1/2 and Eshmel Part 3 chapter selection, optional chapter-start files, and **Troubleshoot Progress**. |
 | **Classes (兵种)** | Current and learned classes, class EXP, skill levels and skill EXP, with batch editing. |
 | **Supports (支援情报)** | Support points, current level and next-level requirements, and recorded conversations. |
-| **Mounts** | The battalion and mount each unit carries, chosen from the save's pool. |
+| **Mounts** | Browse equipment and add or assign battalions and mounts. Mount editing is experimental. |
 | **World map** | Show or hide places and roads, and mark places visited. |
 | **Tutorials** | Make tutorial records available or remove them, with category, state and name-evidence filters. |
 | **Blessings** | Stored EXP for all seven gods and available first-audience controls. |
