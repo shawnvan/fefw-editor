@@ -782,9 +782,109 @@ def add_battalion(payload: bytearray, legion) -> bool:
     st = core.party_store(f)
     if not st:
         return False
-    pool = core.legions(f, st[2])
-    payload[:] = core.with_legions(f, st[2], pool + [legion])
+    payload[:] = core.with_added_legion(f, st[2], legion)
     return True
+
+
+def with_battalion_assignment(f: core.SaveFile, uid: int, index: int | None, *,
+                              required_rank: str | None = None) -> bytearray:
+    """Equip one party-pool record or clear a unit, with both copies kept in sync."""
+    import unit_entries
+
+    if unit_entries.context(f) not in ("free-time", "chapter-start"):
+        raise core.SaveError("请在自由行动或章节开始存档中分配或卸下军团。")
+    store = core.party_store(f)
+    if store is None:
+        raise core.SaveError("无法定位此存档的军团资源池。")
+    pool = [(at, record) for at, record in core.editable_legion_slots(f, store[2])
+            if record is not None]
+    roster = unit_entries.roster(f)
+    targets = [(u, gear) for u, gear in roster if u.person == (uid & 0xFFFFFFFF)]
+    if len(targets) != 1:
+        raise core.SaveError("未找到唯一的我方单位记录。")
+    target, target_gear = targets[0]
+    target_number = target_gear.unit_number
+    by_number = {}
+    for unit, gear in roster:
+        by_number.setdefault(gear.unit_number, []).append((unit, gear))
+    if not target_number or len(by_number[target_number]) != 1:
+        raise core.SaveError("所选单位的编号无效或重复。")
+
+    previous = [(at, record) for at, record in pool if record.owner == target_number]
+    if len(previous) > 1:
+        raise core.SaveError("资源池中有多支军团指向所选单位，无法确定原配属。")
+    secondary = core.reliquary_store(f)
+    other_records = core.legions(f, secondary[2]) if secondary and secondary[2] != store[2] else []
+    pool_records = [record for _, record in pool]
+    if target_gear.legion in other_records:
+        raise core.SaveError("所选单位的军团来自另一个装备库，请先在游戏内卸下。")
+
+    # Ownership bytes are fixed-width. Only equipment slots themselves can grow or shrink.
+    owners = {at: 0 for at, _ in previous}
+    units = {target.start: (target_gear, None, b"\x00")}
+    if index is not None:
+        if not 0 <= index < len(pool):
+            raise core.SaveError("选中的军团已不在当前资源池中。")
+        selected_at, selected = pool[index]
+        if selected.owner and selected in other_records:
+            raise core.SaveError("这支军团在两个装备库中有相同的配属记录，请先在游戏内卸下。")
+        tactics = dict(target.masteries).get(12, 0)
+        if required_rank in GRADES and grade_of(tactics) < GRADES.index(required_rank):
+            raise core.SaveError(f"该单位的指挥术为 {grade_label(tactics)}，"
+                                 f"此军团需要 {required_rank}。")
+        if selected.owner and selected.owner != target_number:
+            holders = by_number.get(selected.owner, [])
+            if len(holders) != 1:
+                raise core.SaveError("无法唯一识别这支军团的原配属单位。")
+            holder, holder_gear = holders[0]
+            if holder_gear.legion == selected:
+                units[holder.start] = (holder_gear, None, b"\x00")
+
+        # Old editor versions wrote a unit reference without claiming a pool entry.
+        # Clean up only dangling references to this type, leaving valid same-type copies alone.
+        known = pool_records + other_records
+        for unit, gear in roster:
+            old = gear.legion
+            if (unit.start != target.start and old and old.owner == gear.unit_number
+                    and (old.row, old.id) == (selected.row, selected.id) and old not in known):
+                if not gear.unit_number or len(by_number[gear.unit_number]) != 1:
+                    raise core.SaveError("旧配属涉及编号无效或重复的单位，无法安全修复。")
+                units[unit.start] = (gear, None, b"\x00")
+
+        owners[selected_at] = target_number
+        equipped = core.Legion(selected.row, target_number, selected.id)
+        if target_gear.legion == equipped and selected.owner == target_number:
+            del units[target.start]
+        else:
+            record = bytearray(f.payload[selected_at:selected_at + 17])
+            record[2] = target_number
+            units[target.start] = (target_gear, equipped, bytes(record))
+
+    out = f.copy()
+    for at, owner in owners.items():
+        out.payload[at + 2] = owner
+    # Descending order keeps the recorded offsets of units still to edit valid.
+    for start, (gear, _, record) in sorted(units.items(), reverse=True):
+        if out.payload[gear.legion_at:gear.legion_at + gear.legion_len] == record:
+            continue
+        tree = out.tree()
+        node = tree.node_at(start)
+        if node < 0:
+            raise core.SaveError("无法定位需要更新的单位记录。")
+        out = core.SaveFile(tree.splice(node, gear.legion_at, gear.legion_len, record))
+
+    actual_store = core.party_store(out)
+    expected_pool = [core.Legion(record.row, owners.get(at, record.owner), record.id)
+                     for at, record in pool]
+    expected_gear = [(u.person, gear.unit_number, gear.ride,
+                      units[u.start][1] if u.start in units else gear.legion)
+                     for u, gear in roster]
+    actual_gear = [(u.person, gear.unit_number, gear.ride, gear.legion)
+                   for u, gear in unit_entries.roster(out)]
+    if (not actual_store or core.legions(out, actual_store[2]) != expected_pool
+            or actual_gear != expected_gear):
+        raise core.SaveError("军团归属或单位装备未通过读回校验。")
+    return out.payload
 
 
 def remove_battalion(payload: bytearray, index: int) -> bool:

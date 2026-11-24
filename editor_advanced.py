@@ -159,13 +159,13 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         sv._core_cache = (key, f)
         return f
 
-    def _core_edit(self, fn, what: str) -> bool:
+    def _core_edit(self, fn, what: str, *, current_only=False) -> bool:
         """Preflight every target, then stage one undoable multi-slot edit."""
         if not self.sv:
             return False
         self._commit_form()
         changes = []
-        for sv in self._targets():
+        for sv in ([self.sv] if current_only else self._targets()):
             try:
                 f = core.SaveFile(bytes(sv.payload))
                 new = fn(f)
@@ -206,6 +206,8 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         self.refresh_facilities()
         self.refresh_deeds()
         self.refresh_boons()
+        if self.pages.select() == str(self.mounts_page):
+            self.refresh_mounts()
 
     def refresh_core_pages(self):
         self.refresh_player()
@@ -221,16 +223,19 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
 
     # -------------------------------------------------------- pick a value
     def _picker(self, title: str, rows, current: int | None = None, *,
-                search_terms=None, secondary_title="内部编号", preview_text=None):
-        """Modal searchable single-choice list. rows: [(key, primary, secondary)]."""
+                search_terms=None, secondary_title="内部编号", preview_text=None,
+                browse_only=False, confirm_text="使用此项"):
+        """Searchable list of (key, primary, secondary) rows with an optional preview."""
         win = tk.Toplevel(self)
         win.title(title)
         win.transient(self)
-        self.place_dialog(win, 560, 460)
+        width, height = (640, 540) if browse_only else (560, 460)
+        self.place_dialog(win, width, height)
         win.configure(background=self.p["bg"])
         top = ttk.Frame(win, padding=10)
         top.pack(fill="x")
-        ent = ttk.Entry(top)
+        query = tk.StringVar(master=win)
+        ent = ttk.Entry(top, textvariable=query)
         ent.pack(fill="x")
         tree = ttk.Treeview(win, columns=("sec",), show="tree headings", selectmode="browse")
         tree.heading("#0", text='名称', anchor="w")
@@ -243,7 +248,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         iids: dict[str, object] = {}
 
         def fill(*_a):
-            q = ent.get().strip().lower()
+            q = query.get().strip().lower()
             tree.delete(*tree.get_children())
             iids.clear()
             n = 0
@@ -259,6 +264,11 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
                 n += 1
                 if n > 4000:
                     break
+            if browse_only:
+                if iids and not tree.selection():
+                    tree.selection_set(next(iter(iids)))
+                if preview_text is not None:
+                    update_preview()
 
         def ok(*_a):
             sel = tree.selection()
@@ -266,21 +276,29 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
                 result["key"] = iids[sel[0]]
                 win.destroy()
 
-        ent.bind("<KeyRelease>", fill)
-        tree.bind("<Double-1>", ok)
-        tree.bind("<Return>", ok)
+        query.trace_add("write", fill)
         bar = ttk.Frame(win, padding=(10, 6))
         bar.pack(side="bottom", fill="x")
-        ttk.Button(bar, text='使用此项', style="Accent.TButton", command=ok).pack(side="right")
-        ttk.Button(bar, text='取消', command=win.destroy).pack(side="right", padx=(0, 8))
+        if browse_only:
+            ttk.Button(bar, text="关闭", command=win.destroy).pack(side="right")
+            win.bind("<Escape>", lambda _event: win.destroy())
+        else:
+            tree.bind("<Double-1>", ok)
+            tree.bind("<Return>", ok)
+            ttk.Button(bar, text=confirm_text, style="Accent.TButton", command=ok).pack(side="right")
+            ttk.Button(bar, text='取消', command=win.destroy).pack(side="right", padx=(0, 8))
         if preview_text is not None:
             preview = ttk.Label(win, justify="left", wraplength=520)
             preview.pack(side="bottom", fill="x", padx=10)
+            if browse_only:
+                preview.bind("<Configure>",
+                             lambda event: preview.configure(wraplength=max(100, event.width - 4)))
 
             def update_preview(_event=None):
                 sel = tree.selection()
                 key = iids.get(sel[0]) if sel else None
-                preview.configure(text=preview_text(key))
+                text = "没有匹配的条目。" if browse_only and not iids else preview_text(key)
+                preview.configure(text=text)
 
             tree.bind("<<TreeviewSelect>>", update_preview)
         tree.pack(side="left", fill="both", expand=True, padx=(10, 0))
@@ -1630,7 +1648,13 @@ def _build_mounts(self):
 
     right = ttk.Frame(pane, style="Card.TFrame", padding=12)
     pane.add(right, weight=2)
-    ttk.Label(right, text='此存档的资源池', style="CardH3.TLabel").pack(anchor="w")
+    header = ttk.Frame(right, style="Card.TFrame")
+    header.pack(fill="x")
+    ttk.Label(header, text='此存档的资源池', style="CardH3.TLabel").pack(side="left")
+    ttk.Button(header, text="军团目录…", style="Small.TButton",
+               command=self.show_legion_catalog).pack(side="right", padx=(6, 0))
+    ttk.Button(header, text="添加军团…", style="Small.TButton",
+               command=lambda: self.show_legion_catalog(add=True)).pack(side="right")
     with open(os.path.join(HERE, "legion_details.json"), encoding="utf-8") as source:
         self.legion_details = json.load(source)
     self.pool_tree = scrolled_tree(right, columns=("rank", "owner"), show="tree headings",
@@ -1657,10 +1681,54 @@ def _build_mounts(self):
     row.pack(fill="x")
     ttk.Button(row, text='分配给单位', style="Small.TButton",
                command=self.assign_battalion).pack(side="left")
-    ttk.Button(row, text='清除单位装备', style="Small.TButton",
+    ttk.Button(row, text='卸下军团', style="Small.TButton",
                command=lambda: self.assign_battalion(clear=True)).pack(side="left", padx=(6, 0))
     ttk.Button(row, text='从资源池移除', style="Small.TButton",
                command=self.remove_battalion).pack(side="left", padx=(6, 0))
+
+    def refresh_on_open(_event):
+        if self.pages.select() == str(self.mounts_page):
+            self.refresh_mounts()
+
+    self.pages.bind("<<NotebookTabChanged>>", refresh_on_open, add="+")
+
+
+def show_legion_catalog(self, *, add=False):
+    slot = self.sv
+    if add and slot is None:
+        self.flash("请先打开要添加军团的存档。", "info")
+        return
+    rows, search_terms, previews = [], {}, {}
+    ranks = {rank: index for index, rank in enumerate(("E", "D", "C", "B", "A", "—"))}
+    for type_id, (name, rank, info, meta) in sorted(
+            self.legion_details.items(), key=lambda entry: ranks[entry[1][1]]):
+        if add and rank == "—":
+            continue
+        rows.append((type_id, name, "内部记录" if rank == "—" else rank))
+        identity = f"行号 {meta['row']}　·　类型 ID 0x{type_id}"
+        labels = "　·　".join(label for label in (meta.get("jp"), meta["key"])
+                              if label and label != name)
+        previews[type_id] = "\n".join(part for part in (name, info, labels, identity) if part)
+        search_terms[type_id] = previews[type_id].lower()
+    selected_id = self._picker("添加军团到资源池" if add else "军团目录", rows,
+                               search_terms=search_terms, browse_only=not add,
+                               secondary_title="指挥等级" if add else "指挥等级／类型",
+                               preview_text=lambda key: previews.get(key, ""),
+                               confirm_text="加入资源池")
+    if not add or selected_id is None:
+        return
+    if self.sv is not slot:
+        self.flash("当前存档已切换，请重新选择要添加的军团。", "warn")
+        return
+    name, _, _, meta = self.legion_details[selected_id]
+    legion = core.Legion(meta["row"], 0, int(selected_id, 16))
+
+    def edit(f):
+        if not layer.add_battalion(f.payload, legion):
+            raise core.SaveError("无法定位此存档的军团资源池。")
+        return f.payload
+
+    self._core_edit(edit, f"已添加 {name}（未配属）", current_only=True)
 
 
 def refresh_mounts(self):
@@ -1671,35 +1739,47 @@ def refresh_mounts(self):
     self._mount_rows, self._pool_rows = {}, {}
     self._mount_details = {}
     self.mount_detail.set("")
-    if not self.sv:
+    f = self.core_of()
+    if f is None:
         return
 
     def describe(legion):
         key = f"{legion.id:016x}"
-        return self.legion_details.get(key, (f"未知军团兵 0x{key}", "—", ""))
+        details = self.legion_details.get(key)
+        return details[:3] if details else (f"未知军团兵 0x{key}", "—", "")
 
+    store = core.party_store(f)
+    pool = core.legions(f, store[2]) if store else []
+    secondary = core.reliquary_store(f)
+    known = pool + (core.legions(f, secondary[2]) if secondary else [])
     equipped = {}
     for u in layer.find_units(self.sv.payload):
-        g = layer.unit_gear(self.sv.payload, u.uid)
+        unit = layer.unit_in(f, u.uid)
+        g = core.gear(f, unit) if unit else None
         bat = g.legion if g else None
         bat_txt = "—"
         if bat:
             bat_txt, _, info = describe(bat)
-            equipped[(bat.id, g.unit_number)] = u.name
+            if bat.owner == g.unit_number and bat in known:
+                equipped[(bat.id, g.unit_number)] = u.name
+            else:
+                bat_txt += "（归属待核对）"
         mnt = (f"坐骑 #{g.ride.serial}") if (g and g.ride) else "—"
         iid = self.mount_tree.insert("", "end", text=u.name,
                                      values=(bat_txt, mnt))
         self._mount_rows[iid] = u.uid
         if bat:
             self._mount_details[self.mount_tree, iid] = f"{bat_txt}　·　{u.name}\n{info}"
-    for i, legion in enumerate(layer.battalions(self.sv.payload)):
+    if store is None:
+        return
+    for i, legion in enumerate(pool):
         name, rank, info = describe(legion)
         owner = equipped.get((legion.id, legion.owner),
                              f"归属待核对（{legion.owner}）" if legion.owner else "未配属")
         iid = self.pool_tree.insert("", "end", text=name, values=(rank, owner), iid=f"b{i}")
         self._mount_details[self.pool_tree, iid] = f"{name}　·　{owner}\n{info}"
         self._pool_rows[iid] = ("battalion", i)
-    for i, r in enumerate(layer.mounts(self.sv.payload)):
+    for i, r in enumerate(core.rides(f, store[1])):
         iid = self.pool_tree.insert("", "end", text=r.name or f"坐骑 #{r.serial}",
                                     values=("—", "—"), iid=f"m{i}")
         self._mount_details[self.pool_tree, iid] = f"坐骑 #{r.serial}　记录编号 {hex(r.id)}"
@@ -1712,36 +1792,25 @@ def assign_battalion(self, clear: bool = False):
     if uid is None or not self.sv:
         self.flash("请先在坐骑页选择一个单位。", "info")
         return
-    legion = None
-    ride = None
-    g = layer.unit_gear(self.sv.payload, uid)
-    if g is None:
-        self.flash("该单位的记录没有军团兵栏位（单位实际参战时游戏才会写入）"
-                   "——没有可写的内容。", "warn")
-        return
-    if g.ride:
-        ride = g.ride
+    name = self.mount_tree.item(sel[0], "text")
+    index = None
+    required_rank = None
+    message = f"已卸下 {name} 的军团"
     if not clear:
         psel = self.pool_tree.selection()
         if not psel:
             self.flash("请先在资源池中选择一个军团兵。", "info")
             return
-        kind, idx = self._pool_rows.get(psel[0], (None, None))
+        kind, index = self._pool_rows.get(psel[0], (None, None))
         if kind != "battalion":
             self.flash("这里只能分配军团兵。", "warn")
             return
-        legion = layer.battalions(self.sv.payload)[idx]
-        legion = core.Legion(legion.row, g.unit_number if g else 0, legion.id)
+        required_rank, _ = self.pool_tree.item(psel[0], "values")
+        message = f"已将 {self.pool_tree.item(psel[0], 'text')} 配属给 {name}"
 
-    def edit(f):
-        u = layer.unit_in(f, uid)
-        gg = core.gear(f, u)
-        if gg is None:
-            return None
-        return core.with_gear(f, u, gg, ride, legion)
-
-    self._core_edit(edit, "已清除军团兵" if clear
-                    else f"已配属 {self.pool_tree.item(psel[0], 'text')}")
+    self._core_edit(lambda f: layer.with_battalion_assignment(f, uid, index,
+                                                             required_rank=required_rank),
+                    message, current_only=True)
 
 
 def remove_battalion(self):
@@ -1919,7 +1988,7 @@ def remove_convoy_item_ui(self):
 # everything above is a plain function taking the app; attach it to the mixin
 for _name in ("push_undo", "undo", "redo", "snapshot_root", "take_snapshot",
               "restore_snapshot", "_build_skill_tab", "refresh_skill_lists",
-              "add_skill", "remove_skill", "_build_mounts", "refresh_mounts",
+              "add_skill", "remove_skill", "_build_mounts", "show_legion_catalog", "refresh_mounts",
               "assign_battalion", "remove_battalion", "copy_unit_in",
               "remove_current_unit", "add_convoy_item_ui", "remove_convoy_item_ui",
               "fill_materials_ui"):

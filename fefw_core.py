@@ -938,24 +938,61 @@ def rides(f: SaveFile, at: int) -> list:
     return out
 
 
-def legions(f: SaveFile, at: int) -> list:
+def _legion_slots(f: SaveFile, at: int):
     p = f.payload
     end = f.ptr(at)
-    out = []
     if end - at <= 8:
-        return out
+        return
     n = struct.unpack_from("<H", p, at + 5)[0]
     i = at + 7
     for _ in range(n):
         if i >= end:
             raise SaveError("the battalion list at 0x%X ends early" % at)
         if p[i] == 0:
+            yield i, None
             i += 1
             continue
         if p[i] != 1 or i + 17 > end:
             raise SaveError("unknown battalion record at 0x%X" % i)
-        out.append(Legion(p[i + 1], p[i + 2], struct.unpack_from("<Q", p, i + 9)[0]))
+        yield i, Legion(p[i + 1], p[i + 2], struct.unpack_from("<Q", p, i + 9)[0])
         i += 17
+
+
+def legions(f: SaveFile, at: int) -> list:
+    return [record for _, record in _legion_slots(f, at) if record is not None]
+
+
+def editable_legion_slots(f: SaveFile, at: int) -> list[tuple[int, Legion | None]]:
+    """Validate the initialized party pool before editing any of its slots."""
+    p = f.payload
+    end = f.ptr(at)
+    if end - at == 8 and not any(p[at + 4:end]):
+        raise SaveError("军团资源池尚未初始化。请打开游戏中已解锁军团功能的存档。")
+    if not at + 7 < end <= len(p) or p[at + 4] != 0 or f.u16(at + 5) != LEGION_CAPACITY:
+        raise SaveError("无法识别此存档的军团资源池格式。")
+    slots = list(_legion_slots(f, at))
+    last_at, last = slots[-1]
+    padding = last_at + (1 if last is None else 17)
+    if end - padding > 3 or any(p[padding:end]):
+        raise SaveError("军团资源池末尾有未知数据。")
+    return slots
+
+
+def with_added_legion(f: SaveFile, at: int, legion: Legion) -> bytearray:
+    """Fill one vacant slot, preserving the position and bytes of every existing record."""
+    slots = editable_legion_slots(f, at)
+    free = next((i for i, (_, record) in enumerate(slots) if record is None), None)
+    if free is None:
+        raise SaveError("军团资源池已满。")
+    tree = f.tree()
+    node = tree.node_at(at)
+    if node < 0:
+        raise SaveError("无法定位军团资源池。")
+    out = tree.splice(node, slots[free][0], 1, legion.bytes())
+    expected = [record for _, record in slots]
+    expected[free] = legion
+    if [record for _, record in _legion_slots(SaveFile(out), at)] != expected:
+        raise SaveError("新增军团未通过读回校验。")
     return out
 
 
