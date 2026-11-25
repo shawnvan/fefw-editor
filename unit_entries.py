@@ -170,7 +170,7 @@ def _unit_gear(f, u):
                      legion_at,cur-legion_at,legion)
 
 
-def _pool_groups(f):
+def _pool_groups(f, *, with_gear: bool = True):
     """Decode counted player, reserve and opponent lists without merging them."""
     pool=f.block('UnitPool')
     if pool is None or f.payload[pool.start+4]!=0:
@@ -193,14 +193,16 @@ def _pool_groups(f):
             if (not cursor+84<=end<=pool.end or end%4 or tree.node_at(cursor)<0
                     or f.payload[cursor+4]!=36 or f.payload[cursor+5] not in (0,1)):
                 raise core.SaveError('存在无法识别或不完整的单位记录。')
-            u=core.SaveUnit.read(f,cursor);rows.append((u,_unit_gear(f,u)));cursor=end
+            u=core.SaveUnit.read(f,cursor)
+            rows.append((u,_unit_gear(f,u) if with_gear else None))
+            cursor=end
         groups.append((kind,at,cursor,rows));at=cursor
     raise core.SaveError('找不到当前单位记录区的结束标记。')
 
 
-def pool_groups(f):
+def pool_groups(f, *, with_gear: bool = True):
     try:
-        return _pool_groups(f)
+        return _pool_groups(f, with_gear=with_gear)
     except (IndexError, struct.error) as exc:
         raise core.SaveError('单位记录不完整或格式异常，已拒绝修改。') from exc
 
@@ -212,6 +214,12 @@ def roster(f):
     Their numbers are reserved separately during allocation.
     """
     return [row for kind,_,_,rows in pool_groups(f) if kind in (0,4,6,7) for row in rows]
+
+
+def roster_units(f):
+    """All player SaveUnit records across UnitPool groups without requiring gear parsing."""
+    return [u for kind,_,_,rows in pool_groups(f, with_gear=False)
+            if kind in (0,4,6,7) for u,_ in rows]
 
 
 def flag_values(f):

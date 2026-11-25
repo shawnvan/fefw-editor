@@ -27,6 +27,18 @@
 - **配属军团兵**。在「坐骑」左侧选择单位，右侧选择军团，再点「分配军团」。
   改派会卸下原持有者的这支军团，目标单位原有的军团会回到资源池。
   也可以选中单位后点击「卸下军团」。支持自由行动和章节开始存档。
+- **查看和更改着装（实验）**。「单位」列表有「着装」一列，角色名称旁也会显示当前着装。
+  点击「更改着装…」可为该角色选择默认、职业外观或固有外观：「默认」移除着装标记，
+  「职业外观」优先使用当前兵种的服装，「固有外观」优先使用角色固有的服装。
+  着装标记保存在通用标记表中，在「标记」页显示为「着装设置：角色名」。
+  修改前会按游戏的服装限制表（Costume.bin）检查角色、当前兵种（含骑乘/下马）、
+  剧情部数和存档中的「禁止更改服装」标记，命中限制时会先提示，确认后才写入。
+  敌人与 NPC 记录，以及通用标记表不可写的存档（如部分战斗中或早期存档）只能查看。
+  着装更改支持撤销/重做和同路线镜像，游戏内效果尚未验证。
+
+- **按熟练度与兵种补全战技/特技**。在「单位 → 战技与特技」点击「按熟练度/兵种补全…」，
+  或在「兵种」页点击「补全战技/特技…」，可按当前熟练度、等级和已精通兵种预览并补全应得的战技、特技与魔法
+  （支持单人或全队补全、魔法栏同步写入、高阶替换低阶与第 3 部开关，并支持撤销/重做）。
 
 中文名称和道具详情随项目提供，日常使用无需另行导出游戏数据。
 见[运行说明](#running-from-source)和[中文名称对照](docs/中文名称对照.md)。
@@ -44,7 +56,7 @@
 
 | Page | What |
 |---|---|
-| **Units (单位)** | Level, EXP, HP and stat gains; carried items; classes; arts and skills. Add a character from the catalogue, copy one from another save, remove one, restore recruitment, or change its **Unit #**, with duplicate checks. |
+| **Units (单位)** | Level, EXP, HP and stat gains; carried items; classes; arts and skills (including auto-completion from ranks, level and mastered classes); **outfit preference** (default, class outfit or unique outfit — experimental, not yet verified in game). Add a character from the catalogue, copy one from another save, remove one, restore recruitment, or change its **Unit #**, with duplicate checks. |
 | **Convoy (道具袋)** | Add, swap or remove items and materials (including Building Materials), change quantities, stock all materials, and repair damaged storage lists. |
 | **Gold (金币)** | View and set the amount held in the selected save. |
 | **Player** | Gold, renown EXP and Karma Shards; difficulty, mode and playthrough number; Part 1/2 and Eshmel Part 3 chapter selection, optional chapter-start files, and **Troubleshoot Progress**. |
@@ -163,10 +175,11 @@ The byte layout and the behaviour of the two bytes were worked out by
 * **Total stats and stat-up item bonuses.** See *Stats* above.
 * **Movement.** Units have their own movement values; where they're stored isn't
   known yet.
-* **Weapon-rank rewards and skill effects.** Raising a rank only changes the
-  letter, and adding a skill doesn't grant an effect the class or level wouldn't
-  allow. Skills and arts the game hands out when a rank is reached in play are
-  not added.
+* **Weapon-rank rewards and skill effects.** Raising a rank on the *Classes*
+  page only changes the letter (use **按熟练度/兵种补全…** on *Units* or
+  **补全战技/特技…** on *Classes* to add missed rank, level and class-mastery
+  rewards). Adding a skill doesn't grant an effect the class or level wouldn't
+  allow.
 
 If you know where any of these live, contributions are welcome.
 

@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import json
 import os
+import queue
+import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -34,6 +36,7 @@ from story_page import StoryPageMixin
 from unit_entry_page import UnitEntryPageMixin
 import audiences
 import facilities
+import learnsets
 import tutorials
 import flag_display
 import flag_labels
@@ -588,7 +591,8 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         ttk.Label(bar2, text='技能', style="CardH3.TLabel").pack(side="left")
         self.mas_sel_lbl = ttk.Label(bar2, text="", style="CardMuted.TLabel")
         self.mas_sel_lbl.pack(side="left", padx=(10, 0))
-        for text, cmd in (("设置技能LV…", self.set_mastery_rank), ("设置技能EXP…", self.set_mastery_exp),
+        for text, cmd in (("补全战技/特技…", self.complete_class_learnsets),
+                          ("设置技能LV…", self.set_mastery_rank), ("设置技能EXP…", self.set_mastery_exp),
                           ("添加…", self.add_mastery), ("移除", self.remove_mastery)):
             ttk.Button(bar2, text=text, style="Small.TButton", command=cmd).pack(side="right",
                                                                                padx=(6, 0))
@@ -898,6 +902,13 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         n = len(self._mastery_entries())
         self.mas_sel_lbl.configure(
             text=f"已选择 {n} 项。设置技能LV、技能EXP或移除会应用到全部所选项。" if n > 1 else "")
+
+    def complete_class_learnsets(self):
+        u = self._cls_unit()
+        if u is None:
+            self.flash("请先选择一个单位。", "info")
+            return
+        self.open_learnset_completion(person=u.person)
 
     @staticmethod
     def _short_list(names, limit: int = 4) -> str:
@@ -1553,6 +1564,13 @@ def _build_skill_tab(self):
     """The record's skill lists (all six), each with add / remove."""
     tab = ttk.Frame(self.unit_tabs, style="Card.TFrame", padding=16)
     self.unit_tabs.add(tab, text='战技与特技')
+    top = ttk.Frame(tab, style="Card.TFrame")
+    top.pack(fill="x", pady=(0, 8))
+    ttk.Button(top, text="按熟练度/兵种补全…", style="Accent.TButton",
+               command=lambda: self.open_learnset_completion()).pack(side="left")
+    ttk.Label(top, style="CardMuted.TLabel",
+              text="按当前等级、技能熟练度与已精通兵种补全「已习得（全部）」与缺失魔法").pack(
+        side="left", padx=(10, 0))
     grid = ttk.Frame(tab, style="Card.TFrame")
     grid.pack(fill="both", expand=True)
     self._skill_trees = {}
@@ -1573,7 +1591,7 @@ def _build_skill_tab(self):
         self._skill_trees[idx] = tree
     ttk.Label(tab, style="CardFaint.TLabel", justify="left", wraplength=820,
               text="「装备战技／装备特技」是单位带上战场的内容；「已习得（全部）」是学过的"
-                   "一切。添加或删除条目都会安全地重写列表。"
+                   "一切。自动补全只会补写「已习得（全部）」与魔法栏，不改写其余子列表，也不注入秘传书或剧情触发项。"
               ).pack(anchor="w", pady=(8, 0))
 
 
@@ -1635,6 +1653,409 @@ def add_skill(self, index: int):
         return core.with_skill_list(g, u, index + 1, ids + [sid])
 
     self._core_edit(edit, f"{layer.SKILL_LIST_NAMES[index]}：已添加 {layer.skill_label(sid)}")
+
+
+def open_learnset_completion(self, person: int | None = None):
+    """Preview and apply earned skills, arts, magic, and class masteries across target slots."""
+    if not self.sv:
+        self.flash("请先打开存档。", "info")
+        return
+    self._commit_form()
+    target_pid = self.uid if person is None else person
+    if target_pid is None:
+        self.flash("请先选择一个单位。", "info")
+        return
+    f = self.core_of()
+    if f is None:
+        return
+
+    route = layer.route_info(self.sv.payload)
+    default_part3 = bool(route and route[1] == 3)
+    try:
+        initial_plan = learnsets.plan(f, target_pid, include_part3=default_part3)
+    except core.SaveError:
+        initial_plan = None
+
+    win = tk.Toplevel(self)
+    win.title("按熟练度/兵种补全战技与特技")
+    win.transient(self)
+    self.place_dialog(win, 800, 580)
+    win.configure(background=self.p["bg"])
+
+    top = ttk.Frame(win, style="Card.TFrame", padding=(14, 12))
+    top.pack(fill="x", padx=12, pady=(12, 8))
+    title_name = initial_plan.unit_name if initial_plan else unit_name(target_pid)
+    ttk.Label(top, text=f"按熟练度 / 等级 / 已精通兵种补全 — {title_name}",
+              style="CardH3.TLabel").pack(anchor="w")
+
+    scope_var = tk.StringVar(master=win, value="party" if initial_plan is None else "unit")
+    scope_row = ttk.Frame(top, style="Card.TFrame")
+    scope_row.pack(fill="x", pady=(8, 4))
+    ttk.Label(scope_row, text="补全范围：", style="Card.TLabel").pack(side="left")
+    ttk.Radiobutton(scope_row, text=f"仅当前单位（{title_name}）", value="unit",
+                    variable=scope_var).pack(side="left", padx=(4, 12))
+    ttk.Radiobutton(scope_row, text="全队可招募角色", value="party",
+                    variable=scope_var).pack(side="left")
+
+    magic_var = tk.BooleanVar(master=win, value=True)
+    replace_var = tk.BooleanVar(master=win, value=True)
+    part3_var = tk.BooleanVar(master=win, value=default_part3)
+    init_var = tk.BooleanVar(master=win, value=False)
+
+    opts = ttk.Frame(top, style="Card.TFrame")
+    opts.pack(fill="x", pady=(4, 0))
+    ttk.Checkbutton(opts, text="同步补全缺失的黑/白魔法到单位魔法栏",
+                    variable=magic_var).pack(anchor="w")
+    ttk.Checkbutton(opts, text="用高阶版本替换低阶（如 LV1~5 → 奥妙、＋ / ＋＋；保留仍在使用的旧阶）",
+                    variable=replace_var).pack(anchor="w")
+    ttk.Checkbutton(opts, text="包含第 3 部限定习得项",
+                    variable=part3_var).pack(anchor="w")
+    ttk.Checkbutton(opts, text="包含 LV 1 初始固有技能（部分早期/第 0 部剧情角色有意隐藏）",
+                    variable=init_var).pack(anchor="w")
+
+    summary_lbl = ttk.Label(top, text="", style="CardMuted.TLabel", wraplength=750, justify="left")
+    summary_lbl.pack(anchor="w", pady=(8, 0))
+
+    tree_frame = ttk.Frame(win, style="Card.TFrame")
+    tree_frame.pack(fill="both", expand=True, padx=12, pady=(0, 8))
+    tree = ttk.Treeview(
+        tree_frame, columns=("action", "name", "reason", "sid"),
+        show="tree headings", selectmode="none",
+    )
+    for col, title, width in (("#0", "槽位 / 单位", 150), ("action", "操作", 145),
+                              ("name", "名称", 150), ("reason", "依据 / 来源", 185),
+                              ("sid", "内部编号", 145)):
+        tree.heading(col, text=title, anchor="w")
+        tree.column(col, width=width, minwidth=80, stretch=col in ("name", "reason", "sid"))
+    sb = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+    tree.configure(yscrollcommand=sb.set)
+    tree.pack(side="left", fill="both", expand=True)
+    sb.pack(side="right", fill="y")
+
+    bar = ttk.Frame(win, padding=(12, 0, 12, 12))
+    bar.pack(fill="x")
+    ttk.Label(bar, style="CardFaint.TLabel",
+              text="只修改「已习得（全部）」与魔法栏；不改写「已习得战技」或仍被装备的低阶技能。"
+              ).pack(side="left")
+    apply_btn = ttk.Button(bar, text="应用补全", style="Accent.TButton")
+    apply_btn.pack(side="right")
+    cancel_btn = ttk.Button(bar, text="取消")
+    cancel_btn.pack(side="right", padx=(0, 8))
+
+    CAT_ADD = {"art": "+ 已习得(战技)", "magic": "+ 已习得(魔法)", "blaze": "+ 已习得(猛击)",
+               "skill": "+ 已习得(特技)"}
+
+    # Capture target slots when the dialog opens; compute fast preview synchronously,
+    # run write-preflight in a worker thread, and re-verify digests before apply.
+    preview_state = {
+        "slots": list(self._targets()),
+        "slot_plans": [],
+        "scope": scope_var.get(),
+        "opts": {},
+        "gen": 0,
+        "validating": False,
+        "poll_id": None,
+        "closed": False,
+        "notice": "",
+    }
+    result_queue: queue.Queue = queue.Queue()
+
+    def _cancel_poll():
+        pid = preview_state["poll_id"]
+        preview_state["poll_id"] = None
+        if pid is not None:
+            try:
+                win.after_cancel(pid)
+            except tk.TclError:
+                pass
+
+    def _schedule_poll():
+        if preview_state["closed"] or preview_state["poll_id"] is not None:
+            return
+        try:
+            preview_state["poll_id"] = win.after(40, _poll_validation)
+        except tk.TclError:
+            preview_state["poll_id"] = None
+
+    def _close_dialog(*_args):
+        preview_state["closed"] = True
+        preview_state["validating"] = False
+        _cancel_poll()
+        try:
+            if win.winfo_exists():
+                win.destroy()
+        except tk.TclError:
+            pass
+
+    def _slot_label(sv) -> str:
+        base = os.path.basename(sv.path)
+        if len(preview_state["slots"]) <= 1:
+            return base
+        return f"{base}（当前）" if sv is self.sv else f"{base}（镜像）"
+
+    def _decoded_slots(slot_list):
+        decoded = []
+        decode_errors = []
+        for sv in slot_list:
+            label = _slot_label(sv)
+            try:
+                sf = self.core_of(sv)
+                if sf is None:
+                    raise core.SaveError("无法解析存档结构。")
+                decoded.append((sv.path, label, sf))
+            except Exception as exc:          # noqa: BLE001 — surface slot decode failure
+                decode_errors.append((sv.path, label, learnsets.payload_digest(sv.payload), str(exc)))
+        return decoded, decode_errors
+
+    def _current_opts():
+        return {
+            "include_part3": part3_var.get(),
+            "replace_lower": replace_var.get(),
+            "include_magic": magic_var.get(),
+            "include_initial": init_var.get(),
+        }
+
+    def _render_plans(ordered_plans, *, notice: str = "", validating: bool = False):
+        tree.delete(*tree.get_children())
+        errors = [sp for sp in ordered_plans if sp.error]
+        total_add = total_rep = total_mag = total_skip = total_kept = 0
+        changed_slots = 0
+
+        for sp in ordered_plans:
+            changed_units = sp.changed_plans
+            if sp.error:
+                slot_node = tree.insert("", "end", text=sp.slot_label, open=True, values=(
+                    "⚠ 无法补全", "该槽位拒绝修改", sp.error, ""))
+            else:
+                n_add = sum(len(p.add_skills) for p in changed_units)
+                n_rep = sum(len(p.remove_skills) for p in changed_units)
+                n_mag = sum(len(p.add_magic) for p in changed_units)
+                n_skip = sum(p.skipped_magic_full for p in changed_units)
+                n_kept = sum(len(p.kept_in_use) for p in changed_units)
+
+                total_add += n_add
+                total_rep += n_rep
+                total_mag += n_mag
+                total_skip += n_skip
+                total_kept += n_kept
+
+                if not changed_units:
+                    slot_summary = "无需修改（已拥有全部应得项）"
+                    slot_node = tree.insert("", "end", text=sp.slot_label, open=True, values=(
+                        "—", slot_summary, "", ""))
+                else:
+                    changed_slots += 1
+                    kept_part = f" / {n_kept} 保留" if n_kept else ""
+                    slot_summary = f"{len(changed_units)} 名单位：+{n_add} 新增 / -{n_rep} 替换 / +{n_mag} 魔法{kept_part}"
+                    slot_node = tree.insert("", "end", text=sp.slot_label, open=True, values=(
+                        f"{len(changed_units)} 名单位", slot_summary, "", ""))
+
+            for p in changed_units:
+                for item in p.add_skills:
+                    tree.insert(slot_node, "end", text=p.unit_name, values=(
+                        CAT_ADD.get(item.category, "+ 已习得"), item.name, item.reason, item.sid))
+                for item in p.remove_skills:
+                    tree.insert(slot_node, "end", text=p.unit_name, values=(
+                        "- 替换旧阶", item.name, item.reason, item.sid))
+                for item in p.kept_in_use:
+                    tree.insert(slot_node, "end", text=p.unit_name, values=(
+                        "= 保留旧阶", item.name, item.reason, item.sid))
+                for item in p.add_magic:
+                    tree.insert(slot_node, "end", text=p.unit_name, values=(
+                        "+ 单位魔法栏", item.name, item.reason, item.sid))
+
+        prefix = f"{notice} " if notice else ""
+        if errors:
+            err_text = "；".join(f"{sp.slot_label}（{sp.error}）" for sp in errors)
+            summary_lbl.configure(text=f"{prefix}⚠ 以下槽位存在异常，已禁用应用：{err_text}")
+            apply_btn.state(["disabled"])
+        elif changed_slots == 0:
+            summary_lbl.configure(
+                text=f"{prefix}所选 {len(ordered_plans)} 个槽位内均已拥有全部应得技能、战技与魔法，无需补全。"
+            )
+            apply_btn.state(["disabled"])
+        elif validating or any(sp.has_changes and sp.staged is None for sp in ordered_plans):
+            extra = []
+            if total_kept:
+                extra.append(f"{total_kept} 项低阶仍在使用已保留")
+            if total_skip:
+                extra.append(f"{total_skip} 项魔法因魔法栏已满跳过")
+            extra_note = f" · {'；'.join(extra)}" if extra else ""
+            summary_lbl.configure(
+                text=f"{prefix}共 {changed_slots}/{len(ordered_plans)} 个槽位待修改："
+                     f"新增 {total_add} 项已习得、替换 {total_rep} 项低阶、补齐 {total_mag} 项魔法栏{extra_note}"
+                     f" —— 正在后台校验写入兼容性…"
+            )
+            apply_btn.state(["disabled"])
+        else:
+            extra = []
+            if total_kept:
+                extra.append(f"{total_kept} 项低阶仍在使用已保留")
+            if total_skip:
+                extra.append(f"{total_skip} 项魔法因魔法栏已满跳过")
+            extra_note = f" · {'；'.join(extra)}" if extra else ""
+            summary_lbl.configure(
+                text=f"{prefix}共 {changed_slots}/{len(ordered_plans)} 个槽位待修改："
+                     f"新增 {total_add} 项已习得、替换 {total_rep} 项低阶、补齐 {total_mag} 项魔法栏{extra_note}"
+                     f"（已通过写入校验）。"
+            )
+            apply_btn.state(["!disabled"])
+
+    def _poll_validation():
+        preview_state["poll_id"] = None
+        try:
+            if preview_state["closed"] or not win.winfo_exists():
+                return
+        except tk.TclError:
+            return
+        latest = None
+        while True:
+            try:
+                res_gen, validated, err = result_queue.get_nowait()
+            except queue.Empty:
+                break
+            if res_gen == preview_state["gen"]:
+                latest = (validated, err)
+
+        if latest is not None:
+            validated, err = latest
+            preview_state["validating"] = False
+            if err:
+                preview_state["slot_plans"] = []
+                summary_lbl.configure(text=f"⚠ 写入校验失败：{err}")
+                apply_btn.state(["disabled"])
+                return
+            live_slots = list(self._targets())
+            if ([sv.path for sv in live_slots] != [sv.path for sv in preview_state["slots"]]
+                    or any(learnsets.payload_digest(sv.payload) != sp.digest
+                           for sv, sp in zip(live_slots, validated))):
+                preview_state["slots"] = live_slots
+                refresh_preview(notice="⚠ 目标槽位内容自预览开始后已发生变化，已自动重新生成预览。")
+                return
+            preview_state["slot_plans"] = validated
+            _render_plans(validated, notice=preview_state["notice"], validating=False)
+            return
+
+        if preview_state["validating"]:
+            _schedule_poll()
+
+    def refresh_preview(*_args, notice: str = ""):
+        if preview_state["closed"]:
+            return
+        # Bump generation immediately so any in-flight validation results are discarded.
+        preview_state["gen"] += 1
+        my_gen = preview_state["gen"]
+        preview_state["slot_plans"] = []
+        preview_state["validating"] = False
+        preview_state["notice"] = notice
+        apply_btn.state(["disabled"])
+
+        opts_kw = _current_opts()
+        scope = scope_var.get()
+        slot_list = preview_state["slots"]
+        decoded, decode_errors = _decoded_slots(slot_list)
+        sp_by_key = {}
+        if decoded:
+            for sp in learnsets.plan_slots(
+                decoded, target_pid, scope=scope, validate_write=False, **opts_kw
+            ):
+                sp_by_key[sp.slot_key] = sp
+        for key, label, digest, err in decode_errors:
+            sp_by_key[key] = learnsets.SlotPlan(
+                slot_key=key, slot_label=label, digest=digest, plans=(), error=err,
+            )
+
+        ordered_plans = [sp_by_key[sv.path] for sv in slot_list if sv.path in sp_by_key]
+        preview_state["slot_plans"] = ordered_plans
+        preview_state["scope"] = scope
+        preview_state["opts"] = opts_kw
+
+        needs_write = (
+            not any(sp.error for sp in ordered_plans)
+            and any(sp.has_changes for sp in ordered_plans)
+        )
+        _render_plans(ordered_plans, notice=notice, validating=needs_write)
+        if not needs_write:
+            _cancel_poll()
+            return
+
+        preview_state["validating"] = True
+        raw_slots = [(sv.path, _slot_label(sv), bytes(sv.payload))
+                     for sv in slot_list if sv.path in sp_by_key]
+        # Ensure read-only catalog caches are warm on the main thread before spawning worker.
+        learnsets.catalog()
+
+        def worker():
+            try:
+                validated = learnsets.validate_slot_plans(
+                    raw_slots,
+                    ordered_plans,
+                    cancel_check=lambda: preview_state["closed"] or preview_state["gen"] != my_gen,
+                )
+                result_queue.put((my_gen, validated, ""))
+            except learnsets.CancelledError:
+                return
+            except Exception as exc:          # noqa: BLE001 — forward worker failure to UI
+                result_queue.put((my_gen, (), str(exc)))
+
+        threading.Thread(target=worker, daemon=True).start()
+        _schedule_poll()
+
+    def do_apply():
+        if preview_state["validating"]:
+            return
+        self._commit_form()
+        live_slots = list(self._targets())
+        expected_plans = preview_state["slot_plans"]
+        scope = preview_state["scope"]
+        opts_kw = preview_state["opts"]
+
+        stale = (
+            [sv.path for sv in live_slots] != [sv.path for sv in preview_state["slots"]]
+            or len(live_slots) != len(expected_plans)
+            or opts_kw != _current_opts()
+            or scope != scope_var.get()
+            or any(learnsets.payload_digest(sv.payload) != sp.digest
+                   for sv, sp in zip(live_slots, expected_plans))
+            or any(sp.has_changes and sp.staged is None for sp in expected_plans)
+        )
+        if stale:
+            preview_state["slots"] = live_slots
+            refresh_preview(notice="⚠ 目标槽位或选项自上次预览后已发生变化，已重新生成预览，请确认后再次点击应用。")
+            return
+
+        if any(sp.error for sp in expected_plans):
+            _render_plans(expected_plans)
+            return
+
+        plan_by_digest = {sp.digest: sp for sp in expected_plans}
+
+        def edit(g):
+            sp = plan_by_digest.get(learnsets.payload_digest(g.payload))
+            if sp is None:
+                raise learnsets.StalePreviewError("存档内容与预览不一致，请刷新预览后重试。")
+            return learnsets.apply_slot_plan(g, sp, scope=scope, **opts_kw)
+
+        label = f"{title_name}：补全已习得战技与特技" if scope == "unit" else "全队：补全已习得战技与特技"
+        if self._core_edit(edit, label, slots=preview_state["slots"]):
+            _close_dialog()
+
+    def _on_destroy(event):
+        if event.widget is win:
+            preview_state["closed"] = True
+            preview_state["validating"] = False
+            _cancel_poll()
+
+    apply_btn.configure(command=do_apply)
+    cancel_btn.configure(command=_close_dialog)
+    for var in (scope_var, magic_var, replace_var, part3_var, init_var):
+        var.trace_add("write", lambda *_a: refresh_preview())
+    win.protocol("WM_DELETE_WINDOW", _close_dialog)
+    win.bind("<Destroy>", _on_destroy)
+    win.bind("<Escape>", _close_dialog)
+    refresh_preview()
+    win.grab_set()
+    win.focus_set()
 
 
 def remove_skill(self, index: int):
@@ -2143,7 +2564,8 @@ def remove_convoy_item_ui(self):
 # everything above is a plain function taking the app; attach it to the mixin
 for _name in ("push_undo", "undo", "redo", "snapshot_root", "take_snapshot",
               "restore_snapshot", "_build_skill_tab", "refresh_skill_lists",
-              "add_skill", "remove_skill", "_build_mounts", "show_legion_catalog",
+              "add_skill", "open_learnset_completion", "remove_skill",
+              "_build_mounts", "show_legion_catalog",
               "show_ride_catalog", "refresh_mounts",
               "assign_battalion", "remove_pool_entry", "assign_ride", "copy_unit_in",
               "remove_current_unit", "add_convoy_item_ui", "remove_convoy_item_ui",
