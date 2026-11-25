@@ -92,6 +92,8 @@ def chinese_label(h: int, meta: dict | None) -> str:
         return official
 
     prefix, _, rest = key.partition("_")
+    if key == "衣装_着せ替え無効":
+        return "禁止更改服装"
     if prefix in ("加入", "面識", "衣装"):
         base = english.partition(": ")[2]
         suffix = ""

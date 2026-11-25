@@ -8,7 +8,7 @@ from pathlib import Path
 
 import facilities
 import fefw_core as core
-from fefw_save import DATA_DIR, job_name
+from fefw_save import DATA_DIR, job_name, unit_ids
 
 HERE = Path(__file__).resolve().parent
 
@@ -88,11 +88,16 @@ def _canonical_pid(pid: str, uid: int | None = None) -> tuple[str, int | None, b
 
 def flag_key(pid: str, uid: int | None = None, flags: dict[int, int] | None = None) -> tuple[str, int]:
     """Resolve the exact 衣装_<PID> key and 32-bit FNV-1 hash for a unit."""
-    if pid and pid.startswith("PID_"):
-        direct_key = "衣装_" + pid[4:]
-        direct_hash = core.id_hash(direct_key)
-        if flags is not None and direct_hash in flags:
-            return direct_key, direct_hash
+    if not pid or not pid.startswith("PID_"):
+        return "", 0
+    if uid is None:
+        uid = core.id_hash(pid)
+    if unit_ids().get(uid & 0xFFFFFFFF, {}).get("pid") != pid:
+        return "", 0
+    direct_key = "衣装_" + pid[4:]
+    direct_hash = core.id_hash(direct_key)
+    if flags is not None and direct_hash in flags:
+        return direct_key, direct_hash
     cpid, _, _ = _canonical_pid(pid, uid)
     target_pid = cpid if (cpid and cpid.startswith("PID_")) else pid
     if not target_pid or not target_pid.startswith("PID_"):
@@ -173,12 +178,12 @@ def inspect(f: core.SaveFile, uid: int, pid: str, klass: int, *,
 
     editable = True
     reason = ""
-    if enemy:
-        editable = False
-        reason = "敌人与 NPC 记录为只读，无法修改着装设置。"
-    elif not key:
+    if not key:
         editable = False
         reason = "无法识别该单位的内部标识（PID），无法定位着装标记。"
+    elif enemy or unit_ids()[uid & 0xFFFFFFFF]["kind"] != "char":
+        editable = False
+        reason = "敌人与 NPC 记录为只读，无法修改着装设置。"
     elif not map_editable:
         editable = False
         reason = map_reason
@@ -251,15 +256,21 @@ def edited(f: core.SaveFile, pid: str, target: int | None, *,
     """Atomically set (1/2) or clear (None/0) 衣装_<PID> in GENERAL_MEMBER."""
     if target not in (None, DEFAULT, CLASS_OUTFIT, UNIQUE_OUTFIT):
         raise CostumeError("着装设置仅支持默认、职业外观（1）或固有外观（2）。")
+    person = (core.id_hash(pid) if uid is None else uid) & 0xFFFFFFFF
+    meta = unit_ids().get(person)
+    if not meta or meta["pid"] != pid or not pid.startswith("PID_"):
+        raise CostumeError("无法识别该单位的内部标识（PID），无法定位着装标记。")
+    if meta["kind"] != "char" or pid.startswith("PID_EN_"):
+        raise CostumeError("敌人与 NPC 记录为只读，无法修改着装设置。")
+    if core.unit_by_person(f, person) is None:
+        raise CostumeError("此槽位没有该单位。")
     try:
         fm = facilities.locate_member(f, facilities.GENERAL_MEMBER)
     except facilities.FacilityError as exc:
         raise CostumeError("当前存档的通用标记表无法唯一识别，无法安全修改着装设置。") from exc
 
     flags = {fl.hash: fl.value for fl in fm.flags}
-    key, h = flag_key(pid, uid, flags)
-    if not key:
-        raise CostumeError("无法识别该单位的内部标识（PID），无法定位着装标记。")
+    key, h = flag_key(pid, person, flags)
 
     hits = [fl for fl in fm.flags if fl.hash == h]
     if len(hits) > 1:

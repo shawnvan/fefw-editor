@@ -52,7 +52,7 @@ jobs:
           --add-data "unit_catalog.json;." --add-data "unit_ids.json;." --add-data "item_ids.json;." --add-data "job_ids.json;."
           --add-data "supports.json;." --add-data "support_points.json;." --add-data "item_stack.json;."
           --add-data "weapon_stats.json;." --add-data "item_details.json;." --add-data "legion_details.json;."
-          --add-data "ride_details.json;."
+          --add-data "ride_details.json;." --add-data "costume_rules.json;."
           --add-data "flag_names.json;." --add-data "skill_ids.json;." --add-data "map_spots.json;."
           --add-data "chinese_names.json;."
           --add-data "tutorial_names.json;."
@@ -73,6 +73,13 @@ jobs:
           and len(__import__('blessings').GODS) == 7
           and len(__import__('fast_travel').catalog()) == 20
           and len(__import__('boons').catalog()) == 31"
+
+      - name: Check bundled costume rules
+        run: >-
+          python -c "from PyInstaller.archive.readers import CArchiveReader;
+          from pathlib import Path;
+          path = 'costume_rules.json';
+          assert CArchiveReader('dist/FEFW Save Editor.exe').extract(path) == Path(path).read_bytes()"
 
       - name: Package
         shell: pwsh
@@ -119,7 +126,7 @@ jobs:
           --add-data "unit_catalog.json:." --add-data "unit_ids.json:." --add-data "item_ids.json:." --add-data "job_ids.json:."
           --add-data "supports.json:." --add-data "support_points.json:." --add-data "item_stack.json:."
           --add-data "weapon_stats.json:." --add-data "item_details.json:." --add-data "legion_details.json:."
-          --add-data "ride_details.json:."
+          --add-data "ride_details.json:." --add-data "costume_rules.json:."
           --add-data "flag_names.json:." --add-data "skill_ids.json:." --add-data "map_spots.json:."
           --add-data "chinese_names.json:."
           --add-data "tutorial_names.json:."
@@ -128,6 +135,13 @@ jobs:
           --add-data "boon_catalog.json:."
           --add-data "facility_names.json:."
           editor.py
+
+      - name: Check bundled costume rules
+        run: >-
+          python -c "from PyInstaller.archive.readers import CArchiveReader;
+          from pathlib import Path;
+          path = 'costume_rules.json';
+          assert CArchiveReader('dist/fefw-save-editor').extract(path) == Path(path).read_bytes()"
 
       - name: Check the binary starts
         run: |

@@ -2352,51 +2352,53 @@ class App(AdvancedMixin, tk.Tk):
 
         def apply():
             target = choice.get()
-            if (None if target == 0 else target) == report.value:
+            desired = None if target == costumes.DEFAULT else target
+            slots = []
+            warnings = []
+            for sv in self._targets():
+                name = os.path.basename(sv.path)
+                try:
+                    sf = self.core_of(sv)
+                    su = layer.unit_in(sf, u.uid)
+                    if not su:
+                        continue
+                    sinfo = layer.route_info(sv.payload)
+                    srep = costumes.inspect(
+                        sf, u.uid, u.pid, su.klass, enemy=is_enemy(u),
+                        skill_lists=su.skill_lists, part=sinfo[1] if sinfo else None,
+                    )
+                    if not srep.editable:
+                        raise costumes.CostumeError(srep.read_only_reason)
+                except core.SaveError as exc:
+                    messagebox.showerror("无法更改着装", f"{name}：{exc}", parent=win)
+                    return
+                if srep.value == desired:
+                    continue
+                slots.append(sv)
+                if desired is not None and srep.active_warnings:
+                    warnings.extend(f"{name}：{warning}" for warning in srep.active_warnings)
+
+            if not slots:
                 win.destroy()
                 self.flash("着装设置未变化。", "info")
                 return
-            if target in (1, 2) and report.active_warnings:
-                msg = (
-                    f"{u.name} 当前存在以下着装限制：\n\n"
-                    + "\n".join(f"• {w}" for w in report.active_warnings)
-                    + "\n\n游戏内在此状态下通常不允许切换服装（强行写入的标记可能被游戏忽略，或需转职/脱离受限状态后才生效）。\n\n"
-                      "仍要写入此着装设置吗？"
-                )
-                if not messagebox.askyesno("着装限制提示", msg, icon="warning",
-                                           default="no", parent=win):
-                    return
-            # Check mirrored route saves too so per-slot part/class differences surface clearly.
-            mirror_warnings = []
-            for sv in self._targets():
-                if sv is self.sv:
-                    continue
-                sf = self.core_of(sv)
-                su = layer.unit_in(sf, u.uid) if sf else None
-                if not su:
-                    continue
-                sinfo = layer.route_info(sv.payload)
-                spart = sinfo[1] if sinfo else None
-                srep = costumes.inspect(sf, u.uid, u.pid, su.klass,
-                                        skill_lists=su.skill_lists, part=spart)
-                if target in (1, 2) and srep.active_warnings:
-                    mirror_warnings.append(f"{os.path.basename(sv.path)}：{srep.active_warnings[0]}")
-            if mirror_warnings and not messagebox.askyesno(
-                    "镜像槽位着装限制提示",
-                    "同时编辑的其他槽位命中了着装限制：\n\n"
-                    + "\n".join(f"• {w}" for w in mirror_warnings)
-                    + "\n\n仍要写入全部目标槽位吗？",
+            if warnings and not messagebox.askyesno(
+                    "着装限制提示",
+                    f"{u.name} 的着装限制：\n\n"
+                    + "\n".join(f"• {warning}" for warning in warnings)
+                    + "\n\n游戏可能忽略这些槽位的着装设置。仍要应用吗？",
                     icon="warning", default="no", parent=win):
                 return
 
             ok = self._core_edit(
                 lambda f, p=u.pid, t=target, i=u.uid: costumes.edited(f, p, t, uid=i),
                 f"{u.name} 着装 → {costumes.label(target)}",
+                slots=slots,
             )
             if ok:
                 win.destroy()
-                if target in (1, 2) and (report.active_warnings or mirror_warnings):
-                    self.flash(f"{u.name} 着装 → {costumes.label(target)}（已写入；请注意当前兵种/状态限制，按 Ctrl+S 保存）", "warn")
+                if warnings:
+                    self.flash(f"{u.name} 着装 → {costumes.label(target)}（部分槽位存在限制，按 Ctrl+S 保存）", "warn")
 
         apply_btn = ttk.Button(bar, text='应用', style="Accent.TButton", command=apply)
         apply_btn.pack(side="right")

@@ -159,13 +159,15 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         sv._core_cache = (key, f)
         return f
 
-    def _core_edit(self, fn, what: str, *, current_only=False) -> bool:
+    def _core_edit(self, fn, what: str, *, current_only=False, slots=None) -> bool:
         """Preflight every target, then stage one undoable multi-slot edit."""
         if not self.sv:
             return False
         self._commit_form()
         changes = []
-        for sv in ([self.sv] if current_only else self._targets()):
+        if slots is None:
+            slots = [self.sv] if current_only else self._targets()
+        for sv in slots:
             try:
                 f = core.SaveFile(bytes(sv.payload))
                 new = fn(f)
