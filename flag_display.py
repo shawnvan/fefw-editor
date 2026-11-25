@@ -19,6 +19,7 @@ PREFIX_ZH = {
     "TUTO_": "教程", "実績_": "伟业录进度", "実績状態_": "伟业录领取状态",
     "機能開放_": "功能解锁", "兵種解放_": "兵种解锁", "共有_兵種解放_": "共享兵种解锁",
     "禁止_": "限制", "因果報酬_": "救世的祝福", "ファストトラベル_": "快速传送",
+    "衣装_": "着装设置",
     "サブクエ_": "支线任务", "進行_": "剧情进度", "共有_": "共享记录",
     "拠点_": "据点记录", "状況_": "状态记录", "会話_": "对话记录",
 }
@@ -91,7 +92,7 @@ def chinese_label(h: int, meta: dict | None) -> str:
         return official
 
     prefix, _, rest = key.partition("_")
-    if prefix in ("加入", "面識"):
+    if prefix in ("加入", "面識", "衣装"):
         base = english.partition(": ")[2]
         suffix = ""
         for qualifier, translated in ((" (alternate record)", "（变体记录）"),
@@ -102,7 +103,8 @@ def chinese_label(h: int, meta: dict | None) -> str:
                 break
         name = _character(rest, base)
         if name:
-            return f"{'已加入' if prefix == '加入' else '已会面'}：{name}{suffix}"
+            verb = {"加入": "已加入", "面識": "已会面", "衣装": "着装设置"}[prefix]
+            return f"{verb}：{name}{suffix}"
     if prefix == "支援会話":
         record = _support_labels().get(h)
         if record and record[0] == key:

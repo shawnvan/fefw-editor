@@ -1018,14 +1018,16 @@ class App(AdvancedMixin, tk.Tk):
                         variable=self.show_enemies,
                         command=lambda: (self.refresh_units(), self._save_settings())
                         ).grid(row=2, column=0, sticky="w", pady=(0, 6))
-        self.unit_tree = scrolled_tree(side, columns=("number", "lv"), show="tree headings",
-                                       selectmode="browse")
+        self.unit_tree = scrolled_tree(side, columns=("number", "costume", "lv"),
+                                       show="tree headings", selectmode="browse")
         self.unit_tree.heading("#0", text='名称', anchor="w")
+        self.unit_tree.heading("costume", text='着装', anchor="center")
         self.unit_tree.heading("lv", text='LV', anchor="e")
         self.unit_tree.heading("number", text='编号', anchor="e")
-        self.unit_tree.column("number", width=62, minwidth=55, anchor="e", stretch=False)
-        self.unit_tree.column("#0", width=200, minwidth=140)
-        self.unit_tree.column("lv", width=44, minwidth=40, anchor="e", stretch=False)
+        self.unit_tree.column("number", width=52, minwidth=46, anchor="e", stretch=False)
+        self.unit_tree.column("costume", width=56, minwidth=48, anchor="center", stretch=False)
+        self.unit_tree.column("#0", width=165, minwidth=120)
+        self.unit_tree.column("lv", width=40, minwidth=36, anchor="e", stretch=False)
         self.unit_tree.container.grid(row=3, column=0, sticky="nsew")
         self.unit_tree.bind("<<TreeviewSelect>>", self.on_unit_select)
         acts = ttk.Frame(side, style="Card.TFrame")
@@ -1049,8 +1051,14 @@ class App(AdvancedMixin, tk.Tk):
         self.avatar.pack(side="left")
         info = ttk.Frame(card, style="Card.TFrame")
         info.pack(side="left", padx=(14, 0), fill="x", expand=True)
-        self.unit_name = ttk.Label(info, text='未选择单位', style="CardH1.TLabel")
-        self.unit_name.pack(anchor="w")
+        name_row = ttk.Frame(info, style="Card.TFrame")
+        name_row.pack(anchor="w", fill="x")
+        self.unit_name = ttk.Label(name_row, text='未选择单位', style="CardH1.TLabel")
+        self.unit_name.pack(side="left")
+        self.costume_chip = ttk.Label(name_row, text="", style="Chip.TLabel")
+        self.costume_chip.bind("<Double-1>", lambda _e: self.open_costume_dialog())
+        self.costume_btn = ttk.Button(name_row, text='更改着装…', style="Small.TButton",
+                                      command=self.open_costume_dialog)
         self.unit_sub = ttk.Label(info, text='请先打开存档文件夹。',
                                   style="CardMuted.TLabel")
         self.unit_sub.pack(anchor="w", pady=(2, 0))
@@ -2143,10 +2151,12 @@ class App(AdvancedMixin, tk.Tk):
         units = sorted(self._unit_map().values(),
                        key=lambda u: (is_enemy(u), u.name.lower()))
         import unit_entries
+        core_file = self.core_of() if self.sv else None
         try:
-            numbers={u.person:g.unit_number for u,g in unit_entries.roster(self.core_of())} if self.sv else {}
+            numbers = {u.person: g.unit_number for u, g in unit_entries.roster(core_file)} if core_file else {}
         except core.SaveError:
-            numbers={}
+            numbers = {}
+        cflags = layer.costume_flags(core_file)
         shown = 0
         for u in units:
             enemy = is_enemy(u)
@@ -2155,9 +2165,11 @@ class App(AdvancedMixin, tk.Tk):
             original = (layer.unit_ids().get(u.uid) or {}).get("name_en", "")
             if q and q not in f"{u.name} {original} {u.pid} {u.job}".lower():
                 continue
+            cval = layer.unit_costume(cflags, u.pid, u.uid)
+            ctext = "—" if (enemy and cval is None) else layer.costume_label(cval, short=True)
             tree.insert("", "end", iid=str(u.uid), text=" " + u.name,
                         image=self._dot(_name_color(u.name), 10),
-                        values=(numbers.get(u.uid, '—'), u.level), tags=("enemy",) if enemy else ())
+                        values=(numbers.get(u.uid, '—'), ctext, u.level), tags=("enemy",) if enemy else ())
             shown += 1
         total = sum(1 for u in units if self.show_enemies.get() or not is_enemy(u))
         self.unit_count.configure(text=f"{shown}" if shown == total else f"{shown} / {total}")
@@ -2171,6 +2183,8 @@ class App(AdvancedMixin, tk.Tk):
             tree.see(pick)
             if self.uid != int(pick):
                 self.on_unit_select()
+            else:
+                self._update_costume_chip(self._current(), cflags)
         else:
             self._clear_unit_form()
 
@@ -2184,6 +2198,9 @@ class App(AdvancedMixin, tk.Tk):
         self._skill_rows = []
         self.avatar.show("")
         self.unit_name.configure(text="未选择单位" if self.sv else "未打开存档文件夹")
+        self.costume_chip.configure(text="")
+        self.costume_chip.pack_forget()
+        self.costume_btn.pack_forget()
         self.unit_sub.configure(text="" if self.sv else "请先打开存档文件夹。")
         self.copies_chip.configure(text="")
         self.sync_btn.pack_forget()
@@ -2231,10 +2248,166 @@ class App(AdvancedMixin, tk.Tk):
             v.set(str(u.stats[i]))
             self.stat_bars[i].set(u.stats[i] / top)
         self._update_copies_chip(u)
+        self._update_costume_chip(u)
         self.refresh_skills()
         self.refresh_inventory()
         self.class_now.configure(text=u.job)
         self.refresh_classes()
+
+    def _update_costume_chip(self, u, cflags: dict[int, int] | None = None):
+        if not u or not self.sv:
+            self.costume_chip.configure(text="")
+            self.costume_chip.pack_forget()
+            self.costume_btn.pack_forget()
+            return
+        if cflags is None:
+            cflags = layer.costume_flags(self.core_of())
+        val = layer.unit_costume(cflags, u.pid, u.uid)
+        enemy = is_enemy(u)
+        if enemy and val is None:
+            self.costume_chip.configure(text="")
+            self.costume_chip.pack_forget()
+            self.costume_btn.pack_forget()
+            return
+        style = ("ChipOk.TLabel" if val in (1, 2)
+                 else "Chip.TLabel" if val in (None, 0)
+                 else "ChipWarn.TLabel")
+        self.costume_chip.configure(text=f"着装：{layer.costume_label(val)}", style=style)
+        if not self.costume_chip.winfo_manager():
+            self.costume_chip.pack(side="left", padx=(10, 0), pady=(4, 0))
+        if enemy:
+            self.costume_btn.pack_forget()
+        elif not self.costume_btn.winfo_manager():
+            self.costume_btn.pack(side="left", padx=(8, 0), pady=(3, 0))
+
+    def open_costume_dialog(self):
+        u = self._current()
+        if not u or not self.sv:
+            return
+        import costumes
+        core_file = self.core_of()
+        cu = layer.unit_in(core_file, u.uid) if core_file else None
+        skill_lists = cu.skill_lists if cu else []
+        info = layer.route_info(self.sv.payload)
+        part = info[1] if info else None
+        try:
+            report = costumes.inspect(core_file, u.uid, u.pid, u.klass,
+                                      enemy=is_enemy(u), skill_lists=skill_lists, part=part)
+        except core.SaveError as exc:
+            self.flash(str(exc), "error")
+            return
+
+        win = tk.Toplevel(self)
+        win.title(f"更改着装 — {u.name}")
+        win.transient(self)
+        win.configure(background=self.p["bg"])
+        win.columnconfigure(0, weight=1)
+
+        body = ttk.Frame(win, style="Card.TFrame", padding=16)
+        body.grid(row=0, column=0, sticky="nsew", padx=12, pady=12)
+        body.columnconfigure(0, weight=1)
+
+        ttk.Label(body, text=u.name, style="CardH3.TLabel").grid(row=0, column=0, sticky="w")
+        part_text = f" · 第{part}部" if part is not None else ""
+        key_text = f" · 标记 {report.key} (0x{report.hash:08x})" if report.key else ""
+        ttk.Label(body, text=f"当前兵种：{u.job}{part_text}{key_text}",
+                  style="CardMuted.TLabel").grid(row=1, column=0, sticky="w", pady=(2, 8))
+        ttk.Label(body, text=f"当前着装：{costumes.label(report.value)}",
+                  style="CardBold.TLabel").grid(row=2, column=0, sticky="w", pady=(0, 8))
+
+        current_choice = 0 if report.value is None else report.value
+        choice = tk.IntVar(master=win, value=current_choice if current_choice in (0, 1, 2) else 0)
+
+        opts = ttk.Frame(body, style="Card.TFrame")
+        opts.grid(row=3, column=0, sticky="ew", pady=(0, 10))
+        for val, label in (
+            (0, "默认（移除着装标记） — 按游戏及当前兵种默认规则显示"),
+            (1, "职业外观（兵種衣装優先 = 1） — 优先使用当前职业服装"),
+            (2, "固有外观（固有衣装優先 = 2） — 优先使用角色固有服装"),
+        ):
+            rb = ttk.Radiobutton(opts, text=label, value=val, variable=choice)
+            rb.pack(anchor="w", pady=2)
+            if not report.editable:
+                rb.state(["disabled"])
+
+        if not report.editable:
+            ttk.Label(body, text=f"⚠ {report.read_only_reason}", style="CardWarn.TLabel",
+                      wraplength=500, justify="left").grid(row=4, column=0, sticky="w", pady=(0, 6))
+        elif report.active_warnings:
+            warn_text = "⚠ 检测到以下着装限制：\n" + "\n".join(f"• {w}" for w in report.active_warnings)
+            ttk.Label(body, text=warn_text, style="CardWarn.TLabel",
+                      wraplength=500, justify="left").grid(row=4, column=0, sticky="w", pady=(0, 6))
+        else:
+            ttk.Label(body, text="✓ 当前角色、兵种与剧情部数均未命中禁用限制，可自由切换。",
+                      style="CardOk.TLabel", wraplength=500, justify="left"
+                      ).grid(row=4, column=0, sticky="w", pady=(0, 6))
+
+        notes = "\n".join(report.character_notes)
+        if notes:
+            ttk.Label(body, text=notes, style="CardFaint.TLabel",
+                      wraplength=500, justify="left").grid(row=5, column=0, sticky="w", pady=(2, 10))
+
+        bar = ttk.Frame(body, style="Card.TFrame")
+        bar.grid(row=6, column=0, sticky="ew")
+
+        def apply():
+            target = choice.get()
+            if (None if target == 0 else target) == report.value:
+                win.destroy()
+                self.flash("着装设置未变化。", "info")
+                return
+            if target in (1, 2) and report.active_warnings:
+                msg = (
+                    f"{u.name} 当前存在以下着装限制：\n\n"
+                    + "\n".join(f"• {w}" for w in report.active_warnings)
+                    + "\n\n游戏内在此状态下通常不允许切换服装（强行写入的标记可能被游戏忽略，或需转职/脱离受限状态后才生效）。\n\n"
+                      "仍要写入此着装设置吗？"
+                )
+                if not messagebox.askyesno("着装限制提示", msg, icon="warning",
+                                           default="no", parent=win):
+                    return
+            # Check mirrored route saves too so per-slot part/class differences surface clearly.
+            mirror_warnings = []
+            for sv in self._targets():
+                if sv is self.sv:
+                    continue
+                sf = self.core_of(sv)
+                su = layer.unit_in(sf, u.uid) if sf else None
+                if not su:
+                    continue
+                sinfo = layer.route_info(sv.payload)
+                spart = sinfo[1] if sinfo else None
+                srep = costumes.inspect(sf, u.uid, u.pid, su.klass,
+                                        skill_lists=su.skill_lists, part=spart)
+                if target in (1, 2) and srep.active_warnings:
+                    mirror_warnings.append(f"{os.path.basename(sv.path)}：{srep.active_warnings[0]}")
+            if mirror_warnings and not messagebox.askyesno(
+                    "镜像槽位着装限制提示",
+                    "同时编辑的其他槽位命中了着装限制：\n\n"
+                    + "\n".join(f"• {w}" for w in mirror_warnings)
+                    + "\n\n仍要写入全部目标槽位吗？",
+                    icon="warning", default="no", parent=win):
+                return
+
+            ok = self._core_edit(
+                lambda f, p=u.pid, t=target, i=u.uid: costumes.edited(f, p, t, uid=i),
+                f"{u.name} 着装 → {costumes.label(target)}",
+            )
+            if ok:
+                win.destroy()
+                if target in (1, 2) and (report.active_warnings or mirror_warnings):
+                    self.flash(f"{u.name} 着装 → {costumes.label(target)}（已写入；请注意当前兵种/状态限制，按 Ctrl+S 保存）", "warn")
+
+        apply_btn = ttk.Button(bar, text='应用', style="Accent.TButton", command=apply)
+        apply_btn.pack(side="right")
+        if not report.editable:
+            apply_btn.state(["disabled"])
+        ttk.Button(bar, text='取消', command=win.destroy).pack(side="right", padx=(0, 8))
+
+        win.bind("<Escape>", lambda _e: win.destroy())
+        self.place_dialog(win, 560, 400)
+        win.grab_set()
+        win.focus_set()
 
     def _update_copies_chip(self, u):
         """One record per unit now: the chip says what the game will read."""

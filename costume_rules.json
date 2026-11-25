@@ -1,0 +1,1292 @@
+{
+  "schema": 1,
+  "mount_skill": "efd4acdb",
+  "mount_skill_key": "SID_乗り降り",
+  "mount_jobs": [
+    "05c325d6",
+    "099c83e3",
+    "0b098349",
+    "0df16e14",
+    "109900a9",
+    "19773ee6",
+    "2498ac45",
+    "2d3c55ac",
+    "2ea981f7",
+    "300b0abd",
+    "311bbf17",
+    "329212d9",
+    "32d8a507",
+    "3357e0f4",
+    "3c373691",
+    "4231b855",
+    "45a48537",
+    "4e6c14a6",
+    "516025f9",
+    "52daf7b2",
+    "6559feef",
+    "680b2b65",
+    "87676e0e",
+    "9a124e22",
+    "9dbb769b",
+    "a468aca7",
+    "b5dfe4e0",
+    "b9ff7c39",
+    "bbf9d6f5",
+    "bf1313ab",
+    "c954d183",
+    "cc0fe6a4",
+    "ccfb63df",
+    "dd2ccf08",
+    "df212422",
+    "eab66017",
+    "ec8f4e4a",
+    "ed155aed",
+    "f4624a48",
+    "f6e25508"
+  ],
+  "rules": [
+    {
+      "person": "3d853178",
+      "pid": "PID_カイ",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "dd42cdd3",
+      "pid": "PID_ティアラ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "dd42cdd3",
+      "pid": "PID_ティアラ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "dd42cdd3",
+      "pid": "PID_ティアラ",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "3eab1233",
+      "pid": "PID_ウルタンド",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "24becc53",
+      "pid": "PID_ベルトラン",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "76424943",
+      "pid": "PID_ゲイツ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "76424943",
+      "pid": "PID_ゲイツ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "3aaae5b5",
+      "pid": "PID_マクシム",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": [
+        "!3部"
+      ]
+    },
+    {
+      "person": "3aaae5b5",
+      "pid": "PID_マクシム",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "!3部"
+      ]
+    },
+    {
+      "person": "3aaae5b5",
+      "pid": "PID_マクシム",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "acc4355d",
+      "pid": "PID_ゴライアス",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "acc4355d",
+      "pid": "PID_ゴライアス",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "127ad22c",
+      "pid": "PID_ダンテ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "127ad22c",
+      "pid": "PID_ダンテ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "aa0c2cda",
+      "pid": "PID_ディートリヒ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "aa0c2cda",
+      "pid": "PID_ディートリヒ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "aa0c2cda",
+      "pid": "PID_ディートリヒ",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "eaed860a",
+      "pid": "PID_ファビオ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "eaed860a",
+      "pid": "PID_ファビオ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "1622079b",
+      "pid": "PID_エスメラルダ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "1622079b",
+      "pid": "PID_エスメラルダ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "1622079b",
+      "pid": "PID_エスメラルダ",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "577e717e",
+      "pid": "PID_ミカエラ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "577e717e",
+      "pid": "PID_ミカエラ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "1fb707f4",
+      "pid": "PID_オルヘル",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "1fb707f4",
+      "pid": "PID_オルヘル",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "17d8a000",
+      "pid": "PID_ディエゴ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "17d8a000",
+      "pid": "PID_ディエゴ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "17d8a000",
+      "pid": "PID_ディエゴ",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "fd0849a1",
+      "pid": "PID_ロレッタ",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "bdb3a4bb",
+      "pid": "PID_ニネ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "bdb3a4bb",
+      "pid": "PID_ニネ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "bdb3a4bb",
+      "pid": "PID_ニネ",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "!3部"
+      ]
+    },
+    {
+      "person": "f1cdd1a8",
+      "pid": "PID_セオドラ",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "!3部"
+      ]
+    },
+    {
+      "person": "c5f213cb",
+      "pid": "PID_ボナパルテ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "c5f213cb",
+      "pid": "PID_ボナパルテ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "c5f213cb",
+      "pid": "PID_ボナパルテ",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "3ce6a1ba",
+      "pid": "PID_トビヤス",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "8fd5a1ce",
+      "pid": "PID_タリムーン",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "8fd5a1ce",
+      "pid": "PID_タリムーン",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "8fd5a1ce",
+      "pid": "PID_タリムーン",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "dce09250",
+      "pid": "PID_ウーシュラ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "dce09250",
+      "pid": "PID_ウーシュラ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "dce09250",
+      "pid": "PID_ウーシュラ",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "5658342c",
+      "pid": "PID_ルルディヤー",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "1ae10aca",
+      "pid": "PID_シモン",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "1ae10aca",
+      "pid": "PID_シモン",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "da17f58d",
+      "pid": "PID_フィアナ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": [
+        "!3部"
+      ]
+    },
+    {
+      "person": "da17f58d",
+      "pid": "PID_フィアナ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "!3部"
+      ]
+    },
+    {
+      "person": "da17f58d",
+      "pid": "PID_フィアナ",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "45e9244b",
+      "pid": "PID_レダ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "45e9244b",
+      "pid": "PID_レダ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "45e9244b",
+      "pid": "PID_レダ",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "4e88d94e",
+      "pid": "PID_バッカニア",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "4e88d94e",
+      "pid": "PID_バッカニア",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "4e88d94e",
+      "pid": "PID_バッカニア",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "5477ab4f",
+      "pid": "PID_シロッコ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "5477ab4f",
+      "pid": "PID_シロッコ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "bc368eb6",
+      "pid": "PID_オリンピア",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "bc368eb6",
+      "pid": "PID_オリンピア",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "bc368eb6",
+      "pid": "PID_オリンピア",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "076d3f72",
+      "pid": "PID_ムウ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "076d3f72",
+      "pid": "PID_ムウ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "4681bccf",
+      "pid": "PID_アナトリア",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "4681bccf",
+      "pid": "PID_アナトリア",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "4681bccf",
+      "pid": "PID_アナトリア",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "ac33c4e3",
+      "pid": "PID_ナジャ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "ac33c4e3",
+      "pid": "PID_ナジャ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "aa7f7221",
+      "pid": "PID_サラン",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "aa7f7221",
+      "pid": "PID_サラン",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "aa7f7221",
+      "pid": "PID_サラン",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "02c784c5",
+      "pid": "PID_ダイトウ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "02c784c5",
+      "pid": "PID_ダイトウ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "02c784c5",
+      "pid": "PID_ダイトウ",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "2b0915ea",
+      "pid": "PID_ハルヴィン",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": [
+        "!3部"
+      ]
+    },
+    {
+      "person": "2b0915ea",
+      "pid": "PID_ハルヴィン",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "!3部"
+      ]
+    },
+    {
+      "person": "99408c08",
+      "pid": "PID_イシュマール",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "29c382bc",
+      "pid": "PID_コウカ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "29c382bc",
+      "pid": "PID_コウカ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "ee5acb16",
+      "pid": "PID_トロイア",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "ee5acb16",
+      "pid": "PID_トロイア",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "ee5acb16",
+      "pid": "PID_トロイア",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "174498ae",
+      "pid": "PID_ジュラ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "174498ae",
+      "pid": "PID_ジュラ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "dd7db67c",
+      "pid": "PID_マーズ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "dd7db67c",
+      "pid": "PID_マーズ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "080e7e37",
+      "pid": "PID_スミルノス",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "080e7e37",
+      "pid": "PID_スミルノス",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "ca119530",
+      "pid": "PID_クレール",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "ca119530",
+      "pid": "PID_クレール",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "3eb7a50e",
+      "pid": "PID_カーラ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "3eb7a50e",
+      "pid": "PID_カーラ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "faa47df3",
+      "pid": "PID_アウロラ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "faa47df3",
+      "pid": "PID_アウロラ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "550c26ec",
+      "pid": "PID_ヨーカイ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "550c26ec",
+      "pid": "PID_ヨーカイ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "1a788ba7",
+      "pid": "PID_イオ",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "76ebde3b",
+      "pid": "PID_ペペ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "76ebde3b",
+      "pid": "PID_ペペ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "76ebde3b",
+      "pid": "PID_ペペ",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "!3部"
+      ]
+    },
+    {
+      "person": "7d4c8692",
+      "pid": "PID_ノクチュラ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "7d4c8692",
+      "pid": "PID_ノクチュラ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "aaf85c8d",
+      "pid": "PID_ソフィア",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "aaf85c8d",
+      "pid": "PID_ソフィア",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "aaf85c8d",
+      "pid": "PID_ソフィア",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "b1c36239",
+      "pid": "PID_カターニャ",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "8934d84e",
+      "pid": "PID_ヌディーヌ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": [
+        "!3部"
+      ]
+    },
+    {
+      "person": "8934d84e",
+      "pid": "PID_ヌディーヌ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "!3部"
+      ]
+    },
+    {
+      "person": "dc35ed3d",
+      "pid": "PID_ザーコネ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "dc35ed3d",
+      "pid": "PID_ザーコネ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "1328f941",
+      "pid": "PID_マジーデ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "1328f941",
+      "pid": "PID_マジーデ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "0a96c08b",
+      "pid": "PID_アレキサンドラ",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": [
+        "3部"
+      ]
+    },
+    {
+      "person": "ca882c8e",
+      "pid": "PID_ヌッツォ",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "ca882c8e",
+      "pid": "PID_ヌッツォ",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "d8f5d292",
+      "pid": "PID_セントリオン",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "19d5b2d0",
+      "pid": "PID_アスワン",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "19d5b2d0",
+      "pid": "PID_アスワン",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "19d5b2d0",
+      "pid": "PID_アスワン",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "ccc1297f",
+      "pid": "PID_クレオブロス",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "ccc1297f",
+      "pid": "PID_クレオブロス",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "ccc1297f",
+      "pid": "PID_クレオブロス",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "35d5a20e",
+      "pid": "PID_ミュソン",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "35d5a20e",
+      "pid": "PID_ミュソン",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "d42581b7",
+      "pid": "PID_キリーク",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "66f65049",
+      "pid": "PID_キロイカ",
+      "job": "6ebd841d",
+      "job_key": "JID_戦車兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    },
+    {
+      "person": "55d2f013",
+      "pid": "PID_グラディウス",
+      "job": "",
+      "job_key": "",
+      "skill": "efd4acdb",
+      "skill_key": "SID_乗り降り",
+      "conds": []
+    },
+    {
+      "person": "55d2f013",
+      "pid": "PID_グラディウス",
+      "job": "bbead586",
+      "job_key": "JID_戦象兵",
+      "skill": "",
+      "skill_key": "",
+      "conds": []
+    }
+  ]
+}

@@ -119,6 +119,30 @@ def unit_in(f: core.SaveFile, uid: int):
 
 
 # --------------------------------------------------------------------------
+# unit costume preference (GameUserData general flag map: 衣装_<PID suffix>)
+# --------------------------------------------------------------------------
+def costume_flags(save_or_payload) -> dict[int, int]:
+    """Read-only {flag_hash: value} from GameUserData's general flag map."""
+    import costumes
+    return costumes.read_flags(save_or_payload)[0]
+
+
+def unit_costume(flags: dict[int, int], pid: str, uid: int | None = None) -> int | None:
+    """Return the stored 衣装_<PID> preference (1=class, 2=unique) or None."""
+    if not flags:
+        return None
+    import costumes
+    _, h = costumes.flag_key(pid, uid, flags)
+    return flags.get(h) if h else None
+
+
+def costume_label(value: int | None, *, short: bool = False) -> str:
+    """Human-readable label for a unit's costume setting."""
+    import costumes
+    return costumes.label(value, short=short)
+
+
+# --------------------------------------------------------------------------
 # items
 # --------------------------------------------------------------------------
 def item_slots(payload, uid: int) -> list:
