@@ -10,6 +10,7 @@ Chapter_* slot rather than Auto.
 
 from __future__ import annotations
 
+from fractions import Fraction
 import json
 import os
 import re
@@ -19,6 +20,7 @@ import time
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import filedialog, messagebox, ttk
+import unicodedata
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -123,7 +125,9 @@ def _fmt_time(ts: float) -> str:
 
 
 def _slug(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+    norm = unicodedata.normalize("NFKD", text)
+    ascii_only = "".join(ch for ch in norm if not unicodedata.combining(ch))
+    return re.sub(r"[^a-z0-9]+", "_", ascii_only.lower()).strip("_")
 
 
 # --------------------------------------------------------------------------
@@ -232,9 +236,10 @@ class Avatar(tk.Canvas):
         self._name, self._img = "", None
         app.register_canvas(self)
 
-    def show(self, name: str, pid: str = ""):
+    def show(self, name: str, pid: str = "", uid: int | None = None, name_en: str = ""):
         self._name = name
-        self._img = self.app.unit_image(name, pid, self.size)
+        self._img = (self.app.unit_image(name, pid, self.size, uid=uid, name_en=name_en)
+                     if name else None)
         self.redraw()
 
     def redraw(self):
@@ -813,9 +818,16 @@ class App(AdvancedMixin, tk.Tk):
             return self._img_cache[key]
         try:
             img = tk.PhotoImage(file=path)
-            f = max(1, max(img.width(), img.height()) // size)
-            if f > 1:
-                img = img.subsample(f, f)
+            side = max(img.width(), img.height())
+            if side > size > 0:
+                if side % size == 0:
+                    img = img.subsample(side // size, side // size)
+                else:
+                    frac = Fraction(size, side).limit_denominator(6)
+                    if frac.numerator > 1:
+                        img = img.zoom(frac.numerator, frac.numerator)
+                    if frac.denominator > 1:
+                        img = img.subsample(frac.denominator, frac.denominator)
         except tk.TclError:
             img = None
         self._img_cache[key] = img
@@ -832,15 +844,45 @@ class App(AdvancedMixin, tk.Tk):
                         return img
         return self._dot(KIND_COLORS.get(kind, KIND_COLORS["Item"]))
 
-    def unit_image(self, name: str, pid: str, size: int):
+    @staticmethod
+    def _unit_base_pid(pid: str) -> str:
+        if not pid:
+            return ""
+        return re.sub(r"^PID_(?:(?:SC|BD)[0-9X]+_[0-9X]+_|(?:WD|DN)_)", "PID_", pid)
+
+    def unit_image(self, name: str, pid: str, size: int,
+                   uid: int | None = None, name_en: str = ""):
         folder = os.path.join(ICON_DIR, "units")
         if not os.path.isdir(folder):
             return None
-        for stem in (name, _slug(name), pid):
+        ids = layer.unit_ids()
+        base_pid = self._unit_base_pid(pid)
+        if not name_en:
+            for key in (uid, core.id_hash(pid) if pid else None,
+                        core.id_hash(base_pid) if base_pid and base_pid != pid else None):
+                meta = ids.get(key) if key is not None else None
+                if meta:
+                    name_en = meta.get("name_en") or meta.get("name") or ""
+                    if name_en:
+                        break
+        candidates: list[str] = []
+        if uid is not None:
+            candidates.append(f"{uid:08x}")
+        for raw in (name, name_en, _slug(name_en), _slug(name),
+                    pid, pid[4:] if pid.startswith("PID_") else "",
+                    base_pid, base_pid[4:] if base_pid.startswith("PID_") else ""):
+            if raw and raw not in candidates:
+                candidates.append(raw)
+        for stem in candidates:
             path = os.path.join(folder, stem + ".png")
             if os.path.isfile(path):
                 return self._load_png(path, size)
         return None
+
+    def unit_list_icon(self, name: str, pid: str = "",
+                       uid: int | None = None, name_en: str = ""):
+        img = self.unit_image(name, pid, self.px(20), uid=uid, name_en=name_en)
+        return img if img is not None else self._dot(_name_color(name), 10)
 
     def _build_item_rows(self):
         rows = []
@@ -1047,7 +1089,7 @@ class App(AdvancedMixin, tk.Tk):
         # unit header card
         card = ttk.Frame(main, style="Card.TFrame", padding=(16, 14))
         card.pack(fill="x", padx=(10, 0))
-        self.avatar = Avatar(card, self, size=60)
+        self.avatar = Avatar(card, self, size=self.px(60))
         self.avatar.pack(side="left")
         info = ttk.Frame(card, style="Card.TFrame")
         info.pack(side="left", padx=(14, 0), fill="x", expand=True)
@@ -1351,7 +1393,7 @@ class App(AdvancedMixin, tk.Tk):
 
         card = ttk.Frame(main, style="Card.TFrame", padding=(16, 14))
         card.pack(fill="x", padx=(10, 0))
-        self.sup_avatar = Avatar(card, self, size=60)
+        self.sup_avatar = Avatar(card, self, size=self.px(60))
         self.sup_avatar.pack(side="left")
         info = ttk.Frame(card, style="Card.TFrame")
         info.pack(side="left", padx=(14, 0), fill="x", expand=True)
@@ -1533,7 +1575,8 @@ class App(AdvancedMixin, tk.Tk):
             if party is not None and ("PID_" + jp) not in party:
                 continue
             top = self._top_points(jp, points)
-            iid = self.sup_char_tree.insert("", "end", text=en,
+            iid = self.sup_char_tree.insert("", "end", text=" " + en,
+                                            image=self.unit_list_icon(en, "PID_" + jp, name_en=original),
                                             values=(len(rec.get("partners") or []),
                                                     "" if top is None else f"{top:,}"))
             self._sup_rows[iid] = (jp, rec)
@@ -1563,7 +1606,7 @@ class App(AdvancedMixin, tk.Tk):
             self._sup_keep = []
         self._sup_char = jp
         self.sup_name.configure(text=en)
-        self.sup_avatar.show(en, "PID_" + jp)
+        self.sup_avatar.show(en, "PID_" + jp, name_en=rec["en"] or "")
 
         present = self._support_flags()
         points = self._support_points()
@@ -2168,7 +2211,7 @@ class App(AdvancedMixin, tk.Tk):
             cval = layer.unit_costume(cflags, u.pid, u.uid)
             ctext = "—" if (enemy and cval is None) else layer.costume_label(cval, short=True)
             tree.insert("", "end", iid=str(u.uid), text=" " + u.name,
-                        image=self._dot(_name_color(u.name), 10),
+                        image=self.unit_list_icon(u.name, u.pid, uid=u.uid, name_en=original),
                         values=(numbers.get(u.uid, '—'), ctext, u.level), tags=("enemy",) if enemy else ())
             shown += 1
         total = sum(1 for u in units if self.show_enemies.get() or not is_enemy(u))
@@ -2232,7 +2275,7 @@ class App(AdvancedMixin, tk.Tk):
         if not u:
             self._clear_unit_form()
             return
-        self.avatar.show(u.name, u.pid)
+        self.avatar.show(u.name, u.pid, uid=u.uid)
         self.unit_name.configure(text=u.name)
         pid = u.pid.replace("PID_", "")
         self.unit_sub.configure(text=f"{u.job}   ·   LV {u.level}   ·   {pid}")

@@ -93,7 +93,7 @@ jobs:
           Copy-Item docs -Destination $stage -Recurse
           Copy-Item icons/README.md -Destination "$stage/icons"
           Copy-Item icons/items/.gitkeep -Destination "$stage/icons/items"
-          Copy-Item icons/units/.gitkeep -Destination "$stage/icons/units"
+          Copy-Item icons/units/* -Destination "$stage/icons/units"
           New-Item -ItemType Directory -Force out | Out-Null
           Compress-Archive -Path "stage/$name" -DestinationPath "out/$name-windows.zip"
           git archive --format zip --prefix "$name-source/" -o "out/$name-source.zip" HEAD
@@ -165,7 +165,7 @@ jobs:
           cp -R docs "$stage/"
           cp icons/README.md "$stage/icons/"
           cp icons/items/.gitkeep "$stage/icons/items/"
-          cp icons/units/.gitkeep "$stage/icons/units/"
+          cp -R icons/units/. "$stage/icons/units/"
           tar -C stage -czf "out/$name-linux-x86_64.tar.gz" "$name"
 
       - uses: actions/upload-artifact@v4

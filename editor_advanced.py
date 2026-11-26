@@ -659,8 +659,16 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
             if q and q not in label.lower():
                 continue
             u = by_start[start]
+            meta = unit_ids().get(u.person & 0xFFFFFFFF) or {}
             lv = f.payload[u.level_off]
-            iid = self.cls_unit_tree.insert("", "end", text=label, values=(lv,))
+            iid = self.cls_unit_tree.insert(
+                "", "end", text=" " + label,
+                image=self.unit_list_icon(
+                    meta.get("name") or label, meta.get("pid", ""),
+                    uid=u.person & 0xFFFFFFFF, name_en=meta.get("name_en", ""),
+                ),
+                values=(lv,),
+            )
             self._cls_rows[iid] = u.start
             if first is None:
                 first = iid
@@ -2311,7 +2319,8 @@ def refresh_mounts(self):
             else:
                 ride_txt += "（归属待核对）"
             sections.append(f"{ride_txt}　·　{species}　·　{u.name}\n{info}")
-        iid = self.mount_tree.insert("", "end", text=u.name,
+        iid = self.mount_tree.insert("", "end", text=" " + u.name,
+                                     image=self.unit_list_icon(u.name, u.pid, uid=u.uid),
                                      values=(bat_txt, ride_txt))
         self._mount_rows[iid] = u.uid
         self._mount_details[self.mount_tree, iid] = "\n\n".join(sections)

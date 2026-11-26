@@ -159,7 +159,9 @@ class UnitEntryPageMixin:
                 name = recruit_name(h, r)
                 state = entries.status_label(states[h])
                 if q and q not in f"{name} {r['name']} {r['pid']} {label} {state} {states[h]}".casefold():continue
-                tree.insert('','end',iid=f'{h:08x}',text=name,values=(label,state))
+                tree.insert('','end',iid=f'{h:08x}',text=" "+name,
+                            image=self.unit_list_icon(name, r['pid'], uid=h, name_en=r['name']),
+                            values=(label,state))
             if keep and tree.exists(keep[0]):tree.selection_set(keep)
             choose()
         def commit():
