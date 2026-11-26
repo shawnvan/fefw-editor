@@ -39,6 +39,9 @@
 - **按熟练度与兵种补全战技/特技**。在「单位 → 战技与特技」点击「按熟练度/兵种补全…」，
   或在「兵种」页点击「补全战技/特技…」，可按当前熟练度、等级和已精通兵种预览并补全应得的战技、特技与魔法
   （支持单人或全队补全、魔法栏同步写入、高阶替换低阶与第 3 部开关，并支持撤销/重做）。
+- **角色头像与列表图标**。内置 112 张具名角色透明底头像（存于 `icons/units/`），
+  在「单位」「支援情报」详情卡片以及单位、支援、兵种、坐骑和「添加单位」列表中直接显示角色头像；
+  无头像的泛用士兵、NPC 或道具仍保留彩色圆点与文字徽章，也可按编号或英文/中文名放入自定义 PNG 替换。
 
 中文名称和道具详情随项目提供，日常使用无需另行导出游戏数据。
 见[运行说明](#running-from-source)和[中文名称对照](docs/中文名称对照.md)。
@@ -332,8 +335,10 @@ you pick an inventory slot, only items of the same kind are offered; tick *Allow
 any item type* to override. The skill picker lists skills with an English name
 first.
 
-**Icons:** items get a coloured dot by type and units an initials badge. Drop
-PNGs into `icons/items/` and `icons/units/` to use real images; see
+**Icons:** `icons/units/` bundles 112 named character portraits (120×120 PNG)
+shown in the unit/support headers and unit lists, while items get a coloured
+dot by type and unpictured units fall back to an initials badge or dot. Drop
+custom PNGs into `icons/items/` and `icons/units/` to add or override them; see
 [icons/README.md](icons/README.md).
 
 ![Arts & skills tab](docs/skills.png)
