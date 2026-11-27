@@ -1,4 +1,4 @@
-"""Read-only quest progress, prerequisites, and expiration reader."""
+"""Read-only quest progress, prerequisites, expiration, and recruitment reader."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,6 +11,7 @@ import fefw_core as core
 import fefw_save as fs
 import story
 import supports
+import unit_entries
 
 HERE = Path(__file__).resolve().parent
 CATALOG_PATH = Path(fs.DATA_DIR) / "quest_catalog.json"
@@ -56,6 +57,8 @@ class SaveContext:
     hour: int
     minute: int
     playthrough: int | None = None
+    fame_points: int | None = None
+    fame_level: int | None = None
 
     @property
     def route_label(self) -> str:
@@ -74,7 +77,19 @@ class SaveContext:
         return f"{self.year}/{self.month}/{self.day} {self.hour:02d}:{self.minute:02d}"
 
 
-def _read_context(f: core.SaveFile) -> SaveContext:
+def _fame_level_for(points: int | None, part: int, thresholds: list[dict]) -> int | None:
+    if points is None or not thresholds:
+        return None
+    lv = 1
+    for row in thresholds:
+        if row.get("part", 1) > max(part, 1) and part in (1, 2):
+            continue
+        if points >= row["points"]:
+            lv = row["level"]
+    return lv
+
+
+def _read_context(f: core.SaveFile, thresholds: list[dict]) -> SaveContext:
     headers = [b for b in f.blocks if b.name == "Header"]
     if len(headers) != 1:
         raise QuestError("无法识别存档 Header 块。")
@@ -85,7 +100,13 @@ def _read_context(f: core.SaveFile) -> SaveContext:
     year, month, day, hour, minute = struct.unpack_from("<HBBBB", f.payload, h.start + 22)
     settings = core.read_settings(f)
     playthrough = settings[0] if settings else None
-    return SaveContext(route, part, chapter, year, month, day, hour, minute, playthrough)
+    ud = core.user_data(f)
+    fame_points = None
+    if ud >= 0 and ud + core.RENOWN_AT + 4 <= len(f.payload):
+        fame_points = f.u32(ud + core.RENOWN_AT)
+    fame_level = _fame_level_for(fame_points, part, thresholds)
+    return SaveContext(route, part, chapter, year, month, day, hour, minute,
+                       playthrough, fame_points, fame_level)
 
 
 def _read_sidestory_block(f: core.SaveFile, expected_hashes: set[int]) -> dict[int, tuple[int, int, tuple | None]]:
@@ -197,7 +218,6 @@ def _support_met(
                 if pts is not None and pts >= supports.LEVEL_POINTS[min(level, len(supports.LEVEL_POINTS) - 1)]:
                     return True, f"支援 {rank}（好感点数 {pts} 已达标）"
                 return False, f"需与{lord_jp}达到支援 {rank}（未达成）"
-            # Rank is not listed in the pair's conversation flags (e.g. C omitted, starts at B)
             if pts is not None:
                 return None, f"需与{lord_jp}达到支援 {rank}（当前好感 {pts}，请以游戏内为准）"
             return None, f"需与{lord_jp}达到支援 {rank}（请以游戏内为准）"
@@ -222,9 +242,9 @@ def _fmt_md(m: int, d: int) -> str:
 
 
 def read(f: core.SaveFile) -> dict:
-    """Return read-only context, sidestory statuses, and subquest statuses."""
+    """Return read-only context, sidestory, subquest, and recruitment statuses."""
     cat = catalog()
-    ctx = _read_context(f)
+    ctx = _read_context(f, cat.get("fame_thresholds", []))
     expected_ss = {int(row["hash64"], 16) for row in cat["sidestories"]}
     expected_sq = {int(row["hash32"], 16) for row in cat["subquests"]}
     ss_block = _read_sidestory_block(f, expected_ss)
@@ -243,6 +263,7 @@ def read(f: core.SaveFile) -> dict:
         sq_state_by_key[row["key"]] = entry[0] if entry is not None else None
 
     sidestories = []
+    ss_by_key: dict[str, dict] = {}
     for row in cat["sidestories"]:
         h64 = int(row["hash64"], 16)
         raw_state, raw_flag, ts = ss_block.get(h64, (0, 0, None))
@@ -263,8 +284,6 @@ def read(f: core.SaveFile) -> dict:
             flags, point_lookup, ctx.route,
             row["support_pid"], row["support_level"], already_triggered)
 
-        # SideStory.bin windows belong to Part 1 (year 1449). Entering Part 2+
-        # (1450+) means all Part 1 windows have passed regardless of month/day.
         if ctx.part > 1:
             past_occur = True
             past_accept = True
@@ -303,20 +322,24 @@ def read(f: core.SaveFile) -> dict:
         if r_dl:
             win_str += f" [路线{ctx.route}截止 {_fmt_md(acc_end_m, acc_end_d)}/{_fmt_md(eff_end_m, eff_end_d)}]"
 
-        sidestories.append({
+        item = {
             "kind": "sidestory",
             "row": row,
             "status_code": status_code,
             "status_text": status_text,
             "window": win_str,
             "prereq_text": sup_note,
+            "prereq_quest_keys": [],
             "raw_state": raw_state,
             "raw_flag": raw_flag,
             "ts": ts,
             "cleared": f_clr,
-        })
+        }
+        sidestories.append(item)
+        ss_by_key[row["key"]] = item
 
     subquests = []
+    sq_item_by_key: dict[str, dict] = {}
     for row in cat["subquests"]:
         h32 = int(row["hash32"], 16)
         entry = sq_block.get((h32, ctx.route))
@@ -346,7 +369,14 @@ def read(f: core.SaveFile) -> dict:
                 prereq_missing = True
             prereq_parts.append(f"旗标:{pf['name']}({'✓' if ok else '✗'})")
         if row["fame_level"] > 0:
-            prereq_parts.append(f"名声Lv.{row['fame_level']}(需游戏内确认)")
+            if ctx.fame_level is not None:
+                ok = ctx.fame_level >= row["fame_level"]
+                if not ok:
+                    prereq_missing = True
+                prereq_parts.append(
+                    f"名声Lv.{row['fame_level']}({'✓' if ok else f'当前Lv.{ctx.fame_level}✗'})")
+            else:
+                prereq_parts.append(f"名声Lv.{row['fame_level']}(需游戏内确认)")
         if row["min_playthrough"] > 1:
             if ctx.playthrough is not None:
                 ok = ctx.playthrough >= row["min_playthrough"]
@@ -394,19 +424,92 @@ def read(f: core.SaveFile) -> dict:
         else:
             win_str = "—"
 
-        subquests.append({
+        item = {
             "kind": "subquest",
             "row": row,
             "status_code": status_code,
             "status_text": status_text,
             "window": win_str,
             "prereq_text": " · ".join(prereq_parts) if prereq_parts else "无",
+            "prereq_quest_keys": list(row["prereq_quests"]),
             "raw_state": raw_state,
             "raw_sub": raw_sub,
+        }
+        subquests.append(item)
+        sq_item_by_key[row["key"]] = item
+
+    recruitments = []
+    unit_pool_hashes = {unit_entries.canonical(u.person) for u in f.units()}
+    for rec in cat.get("recruitments", []):
+        p_hash = int(rec["person_hash"], 16)
+        in_pool = p_hash in unit_pool_hashes
+        rec_flag_on = bool(rec["recruit_hash"] and flags.get(int(rec["recruit_hash"], 16), 0) > 0)
+        met_flag_on = bool(rec["met_hash"] and flags.get(int(rec["met_hash"], 16), 0) > 0)
+        scout_flag_on = bool(rec["scout_hash"] and flags.get(int(rec["scout_hash"], 16), 0) > 0)
+        lockouts = [lf["name"] for lf in rec.get("lockout_flags", []) if flags.get(int(lf["hash"], 16), 0) > 0]
+
+        rel_items = []
+        rel_keys = []
+        for sqk in rec.get("related_subquests", []):
+            sq_item = sq_item_by_key.get(sqk)
+            if sq_item and sq_item["status_code"] != "wrong_route":
+                rel_items.append(f"{sq_item['row']['title']}({sq_item['status_text']})")
+                rel_keys.append(sqk)
+        if rec.get("related_sidestory"):
+            ss_item = ss_by_key.get(rec["related_sidestory"])
+            if ss_item:
+                rel_items.append(f"外传:{ss_item['row']['title']}({ss_item['status_text']})")
+                rel_keys.append(rec["related_sidestory"])
+
+        special_val = flags.get(int(rec["special_hash"], 16), 0) if rec.get("special_hash") else 0
+
+        if in_pool or rec_flag_on:
+            status_code, status_text = "cleared", "已入队"
+        elif lockouts:
+            status_code, status_text = "expired", "已被其他阵营招募"
+        elif any("可汇报" in t or "进行中" in t or "可接取" in t for t in rel_items):
+            status_code, status_text = "in_progress", "关联任务可接/进行中"
+        elif scout_flag_on:
+            status_code, status_text = "available", "据点可招募"
+        else:
+            status_code, status_text = "locked", "未解锁/未触发"
+
+        prereq_parts = []
+        if rec.get("scout_flag"):
+            prereq_parts.append(f"可招募标记({'✓' if scout_flag_on else '✗'})")
+        if rec.get("met_flag"):
+            prereq_parts.append(f"面识({'✓' if met_flag_on else '✗'})")
+        if rec.get("special_flag"):
+            prereq_parts.append(f"特殊谈判进度={special_val}")
+        if lockouts:
+            prereq_parts.append("锁定:" + ",".join(lockouts))
+        if rel_items:
+            prereq_parts.append(" · ".join(rel_items))
+
+        recruitments.append({
+            "kind": "recruitment",
+            "row": {
+                "key": rec["pid"],
+                "title": rec["name"],
+                "jp_name": rec["jp_name"],
+                "target_name": rec["name"],
+                "goal": "；".join(rel_items) if rel_items else "通过剧情/据点对话或谈判任务加入",
+            },
+            "status_code": status_code,
+            "status_text": status_text,
+            "window": " · ".join(rel_items) if rel_items else "剧情/据点",
+            "prereq_text": " · ".join(prereq_parts) if prereq_parts else "无额外标记",
+            "prereq_quest_keys": rel_keys,
+            "in_pool": in_pool,
+            "rec_flag": rec_flag_on,
+            "met_flag": met_flag_on,
+            "scout_flag": scout_flag_on,
+            "lockouts": lockouts,
         })
 
     return {
         "context": ctx,
         "sidestories": sidestories,
         "subquests": subquests,
+        "recruitments": recruitments,
     }

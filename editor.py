@@ -435,6 +435,53 @@ class ItemPicker(ttk.Frame):
 # --------------------------------------------------------------------------
 # the app
 # --------------------------------------------------------------------------
+class _PageStack(ttk.Frame):
+    """Stacked page container that switches pages via lift() without Notebook remap flicker."""
+
+    def __init__(self, master, **kw):
+        super().__init__(master, **kw)
+        self.rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=1)
+        self._pages: list[ttk.Frame] = []
+        self._titles: dict[str, str] = {}
+        self._current: str = ""
+
+    def add(self, child: ttk.Frame, *, text: str = ""):
+        key = str(child)
+        self._pages.append(child)
+        self._titles[key] = text
+        child.grid(row=0, column=0, sticky="nsew")
+        if not self._current:
+            self._current = key
+            child.lift()
+
+    def tabs(self) -> tuple[str, ...]:
+        return tuple(str(p) for p in self._pages)
+
+    def tab(self, page_id, option: str | None = None):
+        key = str(page_id)
+        if option == "text":
+            return self._titles.get(key, "")
+        return {"text": self._titles.get(key, "")}
+
+    def select(self, page_id=None):
+        if page_id is None:
+            return self._current
+        key = str(page_id)
+        if key not in self._titles or key == self._current:
+            return self._current
+        self._current = key
+        for p in self._pages:
+            if str(p) == key:
+                p.lift()
+                break
+        self.event_generate("<<NotebookTabChanged>>")
+        return self._current
+
+    def enable_traversal(self):
+        pass
+
+
 class App(AdvancedMixin, tk.Tk):
     def __init__(self, folder: str | None = None):
         super().__init__()
@@ -553,17 +600,18 @@ class App(AdvancedMixin, tk.Tk):
         self.family, self.mono = fam, mono
         for name in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont"):
             try:
-                tkfont.nametofont(name).configure(family=fam, size=10)
+                tkfont.nametofont(name).configure(family=fam, size=11)
             except tk.TclError:
                 pass
-        self.f_body = (fam, 10)
-        self.f_small = (fam, 9)
-        self.f_bold = (fam, 10, "bold")
-        self.f_h3 = (fam, 11, "bold")
-        self.f_h2 = (fam, 14, "bold")
-        self.f_h1 = (fam, 18, "bold")
+        self.f_body = (fam, 11)
+        self.f_small = (fam, 10)
+        self.f_bold = (fam, 11, "bold")
+        self.f_nav = (fam, 11, "bold")
+        self.f_h3 = (fam, 12, "bold")
+        self.f_h2 = (fam, 15, "bold")
+        self.f_h1 = (fam, 19, "bold")
         self.f_huge = (fam, 30, "bold")
-        self.f_mono = (mono, 9)
+        self.f_mono = (mono, 10)
 
     def apply_theme(self):
         p, s = self.p, self.style
@@ -683,6 +731,13 @@ class App(AdvancedMixin, tk.Tk):
         s.map("Treeview.Heading", background=[("active", p["raised"])])
         s.layout("Treeview", [("Treeview.treearea", {"sticky": "nswe"})])
         s.configure("Side.Treeview", background=p["side"], fieldbackground=p["side"])
+        s.layout("Nav.Treeview", [("Treeview.treearea", {"sticky": "nswe"})])
+        s.configure("Nav.Treeview", background=p["side"], fieldbackground=p["side"],
+                    foreground=p["muted"], font=self.f_nav,
+                    rowheight=max(self._row_height(), self.px(32), 32),
+                    borderwidth=0, relief="flat")
+        s.map("Nav.Treeview", background=[("selected", p["sel"])],
+              foreground=[("selected", p["fg"])])
 
         for orientation in ("Vertical", "Horizontal"):
             style = f"{orientation}.TScrollbar"
@@ -700,11 +755,10 @@ class App(AdvancedMixin, tk.Tk):
               foreground=[("selected", p["fg"]), ("active", p["fg"])],
               lightcolor=[("selected", p["accent"])],
               expand=[("selected", (0, 0, 0, 0))])
-        s.configure("Main.TNotebook", background=p["side"], tabmargins=(12, 0, 0, 0))
-        s.configure("Main.TNotebook.Tab", background=p["side"], padding=self.pad(9, 10),
-                    lightcolor=p["side"], bordercolor=p["side"])
-        s.map("Main.TNotebook.Tab", background=[("selected", p["bg"]), ("active", p["raised"])],
-              lightcolor=[("selected", p["accent"])])
+        s.configure("Main.TNotebook", background=p["bg"], borderwidth=0, tabmargins=0)
+        s.layout("Main.TNotebook.Tab", [])
+        if hasattr(self, "nav_tree"):
+            self.nav_tree.tag_configure("group", foreground=p["faint"], font=self.f_small)
         s.configure("TPanedwindow", background=p["bg"])
         s.configure("Sash", sashthickness=6, gripcount=0, background=p["bg"],
                     lightcolor=p["bg"], bordercolor=p["bg"])
@@ -955,9 +1009,18 @@ class App(AdvancedMixin, tk.Tk):
         self.dirty_lbl = ttk.Label(bar, text="", style="Status.TLabel")
         self.dirty_lbl.pack(side="right")
 
-        # ---- pages
-        self.pages = ttk.Notebook(self, style="Main.TNotebook")
-        self.pages.pack(fill="both", expand=True)
+        # ---- pages (left grouped sidebar + hidden-tab notebook)
+        body = ttk.Frame(self)
+        body.pack(fill="both", expand=True)
+        nav_box = ttk.Frame(body, style="Side.TFrame", width=self.px(164), padding=(8, 10, 8, 10))
+        nav_box.pack(side="left", fill="y")
+        nav_box.pack_propagate(False)
+        self.nav_tree = ttk.Treeview(nav_box, style="Nav.Treeview", show="tree", selectmode="browse")
+        self.nav_tree.pack(fill="both", expand=True)
+        self.nav_tree.tag_configure("group", foreground=self.p["faint"], font=self.f_small)
+
+        self.pages = _PageStack(body, style="TFrame")
+        self.pages.pack(side="left", fill="both", expand=True)
         self.units_page = ttk.Frame(self.pages, padding=(14, 14, 14, 8))
         self.convoy_page = ttk.Frame(self.pages, padding=(14, 14, 14, 8))
         self.gold_page = ttk.Frame(self.pages, padding=(14, 14, 14, 8))
@@ -991,12 +1054,64 @@ class App(AdvancedMixin, tk.Tk):
         self.pages.add(self.quests_page, text="任务")
         self.pages.add(self.flags_page, text='标记')
 
-        tab_menu = tk.Menu(self, tearoff=False)
-        for page in self.pages.tabs():
-            tab_menu.add_command(label=self.pages.tab(page, 'text'),
-                                 command=lambda page=page: self.pages.select(page))
-        self.tab_menu_button = ttk.Menubutton(bar, text='切换页签', menu=tab_menu)
-        self.tab_menu_button.pack(side='right', padx=(10, 16))
+        nav_groups = [
+            ("队伍与背包", [
+                (self.units_page, "单位"),
+                (self.convoy_page, "道具袋"),
+                (self.gold_page, "金币"),
+                (self.supports_page, "支援情报"),
+                (self.classes_page, "兵种"),
+                (self.mounts_page, "坐骑"),
+            ]),
+            ("世界与进度", [
+                (self.quests_page, "任务"),
+                (self.world_page, "世界地图"),
+                (self.fast_travel_page, "快速传送"),
+                (self.facilities_page, "功能"),
+                (self.player_page, "玩家"),
+            ]),
+            ("收集与系统", [
+                (self.tutorials_page, "教程"),
+                (self.blessings_page, "加护"),
+                (self.deeds_page, "伟业录"),
+                (self.boons_page, "救世的祝福"),
+                (self.flags_page, "标记"),
+            ]),
+        ]
+        self._nav_page_by_iid = {}
+        self._nav_iid_by_page = {}
+        for g_idx, (g_title, items) in enumerate(nav_groups):
+            g_iid = f"__group_{g_idx}"
+            self.nav_tree.insert("", "end", iid=g_iid, text=f" {g_title}", tags=("group",), open=True)
+            for page, label in items:
+                p_str = str(page)
+                self._nav_page_by_iid[p_str] = page
+                self._nav_iid_by_page[p_str] = p_str
+                self.nav_tree.insert(g_iid, "end", iid=p_str, text=f"  {label}")
+        self.nav_tree.column("#0", width=self.px(148), minwidth=self.px(120))
+
+        def _nav_selected(_event=None):
+            sel = self.nav_tree.selection()
+            if not sel:
+                return
+            page = self._nav_page_by_iid.get(sel[0])
+            if page is not None and self.pages.select() != str(page):
+                self.pages.select(page)
+            elif page is None:
+                cur = self._nav_iid_by_page.get(self.pages.select())
+                if cur and self.nav_tree.exists(cur):
+                    self.nav_tree.selection_set(cur)
+
+        def _sync_nav(_event=None):
+            cur = self._nav_iid_by_page.get(self.pages.select())
+            if cur and self.nav_tree.exists(cur) and self.nav_tree.selection() != (cur,):
+                self.nav_tree.selection_set(cur)
+                self.nav_tree.see(cur)
+
+        self.nav_tree.bind("<<TreeviewSelect>>", _nav_selected)
+        self.pages.bind("<<NotebookTabChanged>>", _sync_nav, add="+")
+        _sync_nav()
+
         self.status_lbl.pack(side='left', fill='x', expand=True)
         self.pages.enable_traversal()
 
@@ -2346,6 +2461,7 @@ class App(AdvancedMixin, tk.Tk):
             return
 
         win = tk.Toplevel(self)
+        win.withdraw()
         win.title(f"更改着装 — {u.name}")
         win.transient(self)
         win.configure(background=self.p["bg"])
@@ -2456,6 +2572,7 @@ class App(AdvancedMixin, tk.Tk):
 
         win.bind("<Escape>", lambda _e: win.destroy())
         self.place_dialog(win, 560, 400)
+        win.deiconify()
         win.grab_set()
         win.focus_set()
 

@@ -51,6 +51,95 @@ def _load_unit_zh(here: Path) -> dict[str, str]:
     return out
 
 
+def _extract_fame_thresholds(game_data: Path) -> list[dict]:
+    """Extract renown level thresholds from Reward.bin's 名声 sheet."""
+    reward_path = game_data / "Reward.bin"
+    if not reward_path.is_file():
+        return []
+    d = reward_path.read_bytes()
+    # Locate the first row of the 名声 sheet (idx=0, u16=1, +32=(1, 1, 0))
+    marker = d.find("名声".encode("utf-8") + b"\x00")
+    if marker < 0:
+        return []
+    base = None
+    for off in range(0xD000, min(len(d), 0x10000), 8):
+        if (struct.unpack_from("<Q", d, off)[0] == 0
+                and struct.unpack_from("<HHI", d, off + 16)[:2] == (0, 1)
+                and d[off + 32:off + 36] == b"\x01\x01\x00\x00"):
+            base = off
+            break
+    if base is None:
+        return []
+    thresholds = []
+    total = 0
+    for i in range(21):
+        off = base + i * 120
+        if off + 36 > len(d):
+            break
+        lv, part = d[off + 32], d[off + 33]
+        delta = struct.unpack_from("<H", d, off + 34)[0]
+        if lv != i + 1:
+            break
+        total += delta
+        thresholds.append({"level": lv, "part": part, "points": total})
+    return thresholds
+
+
+def _build_recruitments(here: Path, sidestories: list[dict], subquests: list[dict],
+                        unit_zh: dict[str, str]) -> list[dict]:
+    uc_path = here / "unit_catalog.json"
+    fn_path = here / "flag_names.json"
+    if not uc_path.is_file():
+        return []
+    uc = json.loads(uc_path.read_text(encoding="utf-8")).get("entries", {})
+    fn_names: dict[str, str] = {}
+    if fn_path.is_file():
+        fn_raw = json.loads(fn_path.read_text(encoding="utf-8"))
+        fn_names = {v["name"]: h for h, v in fn_raw.items() if v.get("name")}
+
+    ss_by_pid = {s["target_pid"]: s["key"] for s in sidestories if s.get("target_pid")}
+    sq_keys = [s["key"] for s in subquests]
+
+    out = []
+    for h_hex, meta in uc.items():
+        pid = meta.get("pid", "")
+        jp = pid.removeprefix("PID_")
+        if not jp:
+            continue
+        scout_name = f"ローカル_第一部_スカウト可能_{jp}"
+        scout_hash = fn_names.get(scout_name, "")
+        lockout_flags = [
+            {"name": name, "hash": f_hex}
+            for name, f_hex in sorted(fn_names.items())
+            if f"{jp}が" in name and "加入した" in name
+        ]
+        # Match negotiation subquests like SQID_<jp>交渉*
+        rel_sq = [k for k in sq_keys if k.startswith(f"SQID_{jp}交渉")]
+        rel_ss = ss_by_pid.get(pid, "")
+        special = ""
+        if jp == "マジーデ" and "イベント_スカウト_マジーデ特殊交渉_進行度" in fn_names:
+            special = "イベント_スカウト_マジーデ特殊交渉_進行度"
+
+        out.append({
+            "person_hash": h_hex,
+            "pid": pid,
+            "jp_name": jp,
+            "name": unit_zh.get(pid) or meta.get("name") or jp,
+            "recruit_flag": meta.get("recruit_flag", ""),
+            "recruit_hash": fn_names.get(meta.get("recruit_flag", ""), ""),
+            "met_flag": meta.get("met_flag", ""),
+            "met_hash": fn_names.get(meta.get("met_flag", ""), ""),
+            "scout_flag": scout_name if scout_hash else "",
+            "scout_hash": scout_hash,
+            "lockout_flags": lockout_flags,
+            "related_subquests": rel_sq,
+            "related_sidestory": rel_ss,
+            "special_flag": special,
+            "special_hash": fn_names.get(special, "") if special else "",
+        })
+    return out
+
+
 def build_catalog(game_data: Path, cn_dir: Path) -> dict:
     quest_msgs = msbt.read(str(cn_dir / "Quest.msbt.zst"))
     battle_title_path = cn_dir / "BattleTitle.msbt.zst"
@@ -155,10 +244,15 @@ def build_catalog(game_data: Path, cn_dir: Path) -> dict:
                 "and_or": sq_bytes[off + fields["AND/OR"][2]],
             })
 
+    fame_thresholds = _extract_fame_thresholds(game_data)
+    recruitments = _build_recruitments(Path(HERE), sidestories, subquests, unit_zh)
+
     return {
         "schema": 1,
+        "fame_thresholds": fame_thresholds,
         "sidestories": sidestories,
         "subquests": subquests,
+        "recruitments": recruitments,
     }
 
 
