@@ -42,6 +42,10 @@
 - **角色头像与列表图标**。内置 112 张具名角色透明底头像（存于 `icons/units/`），
   在「单位」「支援情报」详情卡片以及单位、支援、兵种、坐骑和「添加单位」列表中直接显示角色头像；
   无头像的泛用士兵、NPC 或道具仍保留彩色圆点与文字徽章，也可按编号或英文/中文名放入自定义 PNG 替换。
+- **只读任务进度、前置条件与招募前置查看**。新增「任务」页面，只读展示全部 9 个外传、181 个支线及 67 位角色的招募前置状态：
+  结合当前路线、剧情部数/章节、游戏内日期时间与名声等级，标注「可接取 / 进行中 / 可汇报 / 已完成 / 已过期失效 / 前置条件未满足」等状态，
+  支持按类型与状态筛选、状态优先排序，以及双击或点击按钮快速跳转到前置/关联任务。
+- **左侧分组导航与清晰字号**。以左侧分组垂直导航栏替代拥挤的顶部横向页签，并增大界面与列表字号。
 
 中文名称和道具详情随项目提供，日常使用无需另行导出游戏数据。
 见[运行说明](#running-from-source)和[中文名称对照](docs/中文名称对照.md)。
@@ -73,13 +77,14 @@
 | **Functions** | Facility and feature availability, area access, and city movement restrictions. |
 | **Notable Deeds (伟业录)** | Progress counters and milestone information, with claim states and rewards shown separately. |
 | **Boons (救世的祝福)** | Set tiers, remove ownership, switch owned Boons On/Off, or set all to maximum. |
+| **Quests (任务)** | Read-only view of sidestories, subquests and character recruitment prerequisites, including chapter/date expiration windows, renown level and playthrough checks, status sorting, and quick jump to prerequisite quests. |
 | **Flags (标记)** | Search and edit named save variables, including recruitment, conversations and unlocks. Chinese names are shown by default. Enable **英文名与原始键名** to see English names beside the exact original identifiers. Search accepts either language, the original key or the hash. |
 
 Edits support **Undo/Redo** (Ctrl+Z / Ctrl+Y). **Snapshot** / **Restore…** keep
 copies of the whole save folder. Frequently used save data is cached to keep
 switching pages and editing large lists responsive. The window sizes to fit your
 screen; longer forms and previews scroll, action buttons stay visible, and
-**切换页签** reaches every page when the tab strip is too wide.
+the left grouped navigation sidebar reaches every page cleanly.
 
 ### Story progression
 
@@ -390,7 +395,7 @@ custom PNGs into `icons/items/` and `icons/units/` to add or override them; see
 |---|---|
 | `editor.py`, `editor_advanced.py`, `*_page.py` | Interface and feature pages |
 | `fefw_core.py`, `fefw_layer.py`, `fefw_save.py` | Save parsing, edits, checksums and writing |
-| Feature modules and `.json` catalogues | Units, story, supports, maps, tutorials, blessings, functions, deeds and Boons |
+| Feature modules and `.json` catalogues | Units, story, supports, maps, tutorials, blessings, functions, deeds, Boons and quests |
 | `build_*.py`, `msbt.py` | Rebuild name and item tables from your own game dump |
 | `icons/` | Optional item and unit images |
 | `requirements.txt`, `FEFW Save Editor.bat` | Source dependencies and Windows launcher |
