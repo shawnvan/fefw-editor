@@ -61,6 +61,7 @@ jobs:
           --add-data "deed_names.json;."
           --add-data "boon_catalog.json;."
           --add-data "facility_names.json;."
+          --add-data "quest_catalog.json;."
           editor.py
 
       - name: Check the data files load
@@ -74,14 +75,15 @@ jobs:
           and len(__import__('blessings').GODS) == 7
           and len(__import__('fast_travel').catalog()) == 20
           and len(__import__('boons').catalog()) == 31
+          and len(__import__('quests').catalog()['subquests']) == 181
           and len(__import__('learnsets').catalog()['characters']) == 67"
 
-      - name: Check bundled costume rules
+      - name: Check bundled catalogs
         run: >-
           python -c "from PyInstaller.archive.readers import CArchiveReader;
           from pathlib import Path;
-          path = 'costume_rules.json';
-          assert CArchiveReader('dist/FEFW Save Editor.exe').extract(path) == Path(path).read_bytes()"
+          ar = CArchiveReader('dist/FEFW Save Editor.exe');
+          assert all(ar.extract(p) == Path(p).read_bytes() for p in ('costume_rules.json', 'quest_catalog.json'))"
 
       - name: Package
         shell: pwsh
@@ -137,14 +139,15 @@ jobs:
           --add-data "deed_names.json:."
           --add-data "boon_catalog.json:."
           --add-data "facility_names.json:."
+          --add-data "quest_catalog.json:."
           editor.py
 
-      - name: Check bundled costume rules
+      - name: Check bundled catalogs
         run: >-
           python -c "from PyInstaller.archive.readers import CArchiveReader;
           from pathlib import Path;
-          path = 'costume_rules.json';
-          assert CArchiveReader('dist/fefw-save-editor').extract(path) == Path(path).read_bytes()"
+          ar = CArchiveReader('dist/fefw-save-editor');
+          assert all(ar.extract(p) == Path(p).read_bytes() for p in ('costume_rules.json', 'quest_catalog.json'))"
 
       - name: Check the binary starts
         run: |

@@ -973,6 +973,7 @@ class App(AdvancedMixin, tk.Tk):
         self.facilities_page = ttk.Frame(self.pages, padding=(14, 14, 14, 8))
         self.deeds_page = ttk.Frame(self.pages, padding=(14, 14, 14, 8))
         self.boons_page = ttk.Frame(self.pages, padding=(14, 14, 14, 8))
+        self.quests_page = ttk.Frame(self.pages, padding=(14, 14, 14, 8))
         self.pages.add(self.units_page, text='单位')
         self.pages.add(self.convoy_page, text='道具袋')
         self.pages.add(self.gold_page, text='金币')
@@ -987,6 +988,7 @@ class App(AdvancedMixin, tk.Tk):
         self.pages.add(self.facilities_page, text="功能")
         self.pages.add(self.deeds_page, text="伟业录")
         self.pages.add(self.boons_page, text="救世的祝福")
+        self.pages.add(self.quests_page, text="任务")
         self.pages.add(self.flags_page, text='标记')
 
         tab_menu = tk.Menu(self, tearoff=False)
@@ -1013,6 +1015,7 @@ class App(AdvancedMixin, tk.Tk):
         self._build_facilities()
         self._build_deeds()
         self._build_boons()
+        self._build_quests()
         self._style_trees()
         self._enable_multi_select_all()
         self._update_dirty()
@@ -1751,6 +1754,8 @@ class App(AdvancedMixin, tk.Tk):
             target = self.deed_search
         elif sel == str(self.boons_page):
             target = self.boon_search
+        elif sel == str(self.quests_page):
+            target = self.quest_search
         if target is None:
             return
         target.focus_set()

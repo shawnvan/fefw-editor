@@ -31,6 +31,7 @@ import fast_travel
 import deeds
 from deed_page import DeedPageMixin
 from boon_page import BoonPageMixin
+from quest_page import QuestPageMixin
 from facility_page import FacilityPageMixin
 from story_page import StoryPageMixin
 from unit_entry_page import UnitEntryPageMixin
@@ -147,7 +148,7 @@ def matching_flag_map(source, target, map_i):
     return facilities.locate_member(target, keys[0])
 
 
-class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTravelPageMixin, DeedPageMixin, BoonPageMixin, FacilityPageMixin, StoryPageMixin, UnitEntryPageMixin):
+class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTravelPageMixin, DeedPageMixin, BoonPageMixin, QuestPageMixin, FacilityPageMixin, StoryPageMixin, UnitEntryPageMixin):
     # ------------------------------------------------------------- helpers
     def core_of(self, sv=None):
         """Decoded slot, reused only while its source bytes are unchanged."""
@@ -211,6 +212,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         self.refresh_facilities()
         self.refresh_deeds()
         self.refresh_boons()
+        self.refresh_quests()
         if self.pages.select() == str(self.mounts_page):
             self.refresh_mounts()
 
@@ -225,6 +227,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         self.refresh_facilities()
         self.refresh_deeds()
         self.refresh_boons()
+        self.refresh_quests()
 
     # -------------------------------------------------------- pick a value
     def _picker(self, title: str, rows, current: int | None = None, *,
