@@ -209,8 +209,8 @@ class StoryPageMixin:
             messagebox.showerror('排查进度卡点', str(exc) + '\n\n暂无可安全应用的建议。'
                                  '请在下方地址反馈存档状态和卡住的目标：\n' +
                                  story_troubleshoot.ISSUES_URL, parent=self); return
-        win = tk.Toplevel(self); win.title('排查进度卡点'); win.transient(self)
-        self.place_dialog(win, 740, 570); win.configure(background=self.p['bg'])
+        win = tk.Toplevel(self); win.withdraw(); win.title('排查进度卡点'); win.transient(self)
+        self.place_dialog(win, 740, 570); win.deiconify(); win.configure(background=self.p['bg'])
         frame = ttk.Frame(win, padding=18); frame.pack(fill='both', expand=True)
         buttons = ttk.Frame(frame); buttons.pack(side='bottom', fill='x')
         ttk.Label(frame, text=report.progress.label, style='CardH3.TLabel').pack(anchor='w')
@@ -296,8 +296,8 @@ class StoryPageMixin:
     def _confirm_story_warning(self):
         info = story.read(core.SaveFile(self.sv.payload))
         route, part = info.route, info.part
-        win = tk.Toplevel(self); win.title(WARNING_TITLE); win.transient(self)
-        self.place_dialog(win, 720, 570)
+        win = tk.Toplevel(self); win.withdraw(); win.title(WARNING_TITLE); win.transient(self)
+        self.place_dialog(win, 720, 570); win.deiconify()
         win.configure(background=self.p['bg']); win.resizable(False, False)
         frame = ttk.Frame(win, padding=20); frame.pack(fill='both', expand=True)
         ttk.Label(frame, text=WARNING_TITLE, style='CardH3.TLabel', wraplength=670).pack(anchor='w', pady=(0, 12))
@@ -322,8 +322,8 @@ class StoryPageMixin:
         part = story.part_name(info.part)
         section = '区分' if info.part == 3 else '章节'
         chapters = story_start.chapters_for(info.route, info.part)
-        win = tk.Toplevel(self); win.title(f'{lord} · {part} · 选择{section}'); win.transient(self)
-        self.place_dialog(win, 680, 540); win.configure(background=self.p['bg'])
+        win = tk.Toplevel(self); win.withdraw(); win.title(f'{lord} · {part} · 选择{section}'); win.transient(self)
+        self.place_dialog(win, 680, 540); win.deiconify(); win.configure(background=self.p['bg'])
         frame = ttk.Frame(win, padding=18); frame.pack(fill='both', expand=True)
         ttk.Label(frame, text=f'选择起始{section}', style='CardH3.TLabel').pack(anchor='w')
         limit = {4: '第1章不可选。', 1: '凯伊第3章起也会开放下水道。',

@@ -236,10 +236,12 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
                 can_confirm=None):
         """Searchable list of (key, primary, secondary) rows with an optional preview."""
         win = tk.Toplevel(self)
+        win.withdraw()
         win.title(title)
         win.transient(self)
         width, height = (640, 540) if browse_only else (560, 460)
         self.place_dialog(win, width, height)
+        win.deiconify()
         win.configure(background=self.p["bg"])
         top = ttk.Frame(win, padding=10)
         top.pack(fill="x")
@@ -1427,6 +1429,7 @@ def settings_offsets(f: core.SaveFile) -> list[int]:
 
 def _ask_number(parent, title: str, prompt: str, current: int, limit: int):
     win = tk.Toplevel(parent)
+    win.withdraw()
     win.title(title)
     win.transient(parent)
     win.resizable(False, False)
@@ -1450,6 +1453,7 @@ def _ask_number(parent, title: str, prompt: str, current: int, limit: int):
     ent.bind("<Return>", ok)
     if hasattr(parent, "place_dialog"):
         parent.place_dialog(win)
+    win.deiconify()
     ent.focus_set()
     ent.select_range(0, "end")
     parent.wait_window(win)
@@ -1688,9 +1692,11 @@ def open_learnset_completion(self, person: int | None = None):
         initial_plan = None
 
     win = tk.Toplevel(self)
+    win.withdraw()
     win.title("按熟练度/兵种补全战技与特技")
     win.transient(self)
     self.place_dialog(win, 800, 580)
+    win.deiconify()
     win.configure(background=self.p["bg"])
 
     top = ttk.Frame(win, style="Card.TFrame", padding=(14, 12))

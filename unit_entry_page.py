@@ -88,7 +88,7 @@ class UnitEntryPageMixin:
             except core.SaveError as exc:number=None;allocation_error=str(exc)
         except core.SaveError as exc:self.flash(str(exc),'error');return
         from editor_advanced import class_label
-        win=tk.Toplevel(self);win.title('添加单位预览');win.transient(self)
+        win=tk.Toplevel(self);win.withdraw();win.title('添加单位预览');win.transient(self)
         win.configure(background=ttk.Style(win).lookup('TFrame','background'))
         win.columnconfigure(0,weight=1)
         win.rowconfigure(1,weight=3,minsize=100)
@@ -172,7 +172,7 @@ class UnitEntryPageMixin:
         self.place_dialog(win,920,760)
         win.minsize(min(self.px(580),win.winfo_screenwidth()-40),
                     min(self.px(420),win.winfo_screenheight()-80))
-        fill();search.focus_set();win.grab_set();self.wait_window(win)
+        fill();win.deiconify();search.focus_set();win.grab_set();self.wait_window(win)
 
     def open_unit_number(self):
         if not self._unit_entry_ready() or self.uid is None:return
