@@ -4890,7 +4890,12 @@
       "met_hash": "7e432019",
       "scout_flag": "ローカル_第一部_スカウト可能_セテス",
       "scout_hash": "78b67691",
-      "lockout_flags": [],
+      "lockout_flags": [
+        {
+          "name": "同期_日付_セテスとロレッタがオルヘルクランに加入した",
+          "hash": "9940187a"
+        }
+      ],
       "related_subquests": [
         "SQID_セテス交渉",
         "SQID_セテス交渉_カイ"

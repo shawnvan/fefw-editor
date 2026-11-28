@@ -125,11 +125,21 @@ def read_flags(save_or_payload) -> tuple[dict[int, int], bool, str]:
     try:
         fm = facilities.locate_member(f, facilities.GENERAL_MEMBER)
         return {fl.hash: fl.value for fl in fm.flags}, True, ""
-    except facilities.FacilityError:
+    except core.SaveError:
         maps = core.flag_maps(f)
-        if maps:
-            return ({fl.hash: fl.value for fl in maps[0].flags}, False,
+        hits = [m for m in maps
+                if len({fl.hash for fl in m.flags} & facilities.ANCHORS) >= facilities.MIN_ANCHORS]
+        if len(hits) != 1 and maps:
+            costume_hashes = {core.id_hash("衣装_" + meta["pid"][4:])
+                              for meta in unit_ids().values()
+                              if meta.get("kind") == "char" and (meta.get("pid") or "").startswith("PID_")}
+            costume_hashes.add(DISABLE_FLAG)
+            hits = [m for m in maps if any(fl.hash in costume_hashes for fl in m.flags)]
+        if len(hits) == 1:
+            return ({fl.hash: fl.value for fl in hits[0].flags}, False,
                     "当前存档的通用标记表结构不可写（如部分战斗中或早期存档），着装仅限只读查看。")
+        if maps:
+            return ({}, False, "当前存档无法唯一定位通用标记表，着装仅限只读查看。")
         return {}, False, "当前存档没有可用的通用标记表。"
 
 
@@ -251,6 +261,15 @@ def inspect(f: core.SaveFile, uid: int, pid: str, klass: int, *,
     )
 
 
+def _find_unit(f: core.SaveFile, person: int):
+    target = person & 0xFFFFFFFF
+    try:
+        import unit_entries
+        return next((u for u in unit_entries.roster_units(f) if u.person == target), None)
+    except core.SaveError:
+        return core.unit_by_person(f, target)
+
+
 def edited(f: core.SaveFile, pid: str, target: int | None, *,
            uid: int | None = None) -> bytearray:
     """Atomically set (1/2) or clear (None/0) 衣装_<PID> in GENERAL_MEMBER."""
@@ -262,11 +281,11 @@ def edited(f: core.SaveFile, pid: str, target: int | None, *,
         raise CostumeError("无法识别该单位的内部标识（PID），无法定位着装标记。")
     if meta["kind"] != "char" or pid.startswith("PID_EN_"):
         raise CostumeError("敌人与 NPC 记录为只读，无法修改着装设置。")
-    if core.unit_by_person(f, person) is None:
+    if _find_unit(f, person) is None:
         raise CostumeError("此槽位没有该单位。")
     try:
         fm = facilities.locate_member(f, facilities.GENERAL_MEMBER)
-    except facilities.FacilityError as exc:
+    except core.SaveError as exc:
         raise CostumeError("当前存档的通用标记表无法唯一识别，无法安全修改着装设置。") from exc
 
     flags = {fl.hash: fl.value for fl in fm.flags}

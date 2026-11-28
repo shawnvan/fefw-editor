@@ -1021,9 +1021,12 @@ def editable_legion_slots(f: SaveFile, at: int) -> list[tuple[int, Legion | None
     end = f.ptr(at)
     if end - at == 8 and not any(p[at + 4:end]):
         raise SaveError("军团资源池尚未初始化。请打开游戏中已解锁军团功能的存档。")
-    if not at + 7 < end <= len(p) or p[at + 4] != 0 or f.u16(at + 5) != LEGION_CAPACITY:
+    if (not at + 7 + LEGION_CAPACITY <= end <= len(p) or end % 4
+            or p[at + 4] != 0 or f.u16(at + 5) != LEGION_CAPACITY):
         raise SaveError("无法识别此存档的军团资源池格式。")
     slots = list(_legion_slots(f, at))
+    if len(slots) != LEGION_CAPACITY:
+        raise SaveError("无法识别此存档的军团资源池格式。")
     last_at, last = slots[-1]
     padding = last_at + (1 if last is None else 17)
     if end - padding > 3 or any(p[padding:end]):
@@ -1046,6 +1049,25 @@ def with_added_legion(f: SaveFile, at: int, legion: Legion) -> bytearray:
     expected[free] = legion
     if [record for _, record in _legion_slots(SaveFile(out), at)] != expected:
         raise SaveError("新增军团未通过读回校验。")
+    return out
+
+
+def with_removed_legion(f: SaveFile, at: int, slot_index: int) -> bytearray:
+    """Clear one vacant slot back to a 1-byte sentinel, preserving all other positions."""
+    slots = editable_legion_slots(f, at)
+    if not 0 <= slot_index < len(slots) or slots[slot_index][1] is None:
+        raise SaveError("所选军团已不在资源池中。")
+    if slots[slot_index][1].owner:
+        raise SaveError("所选军团仍有配属单位。")
+    tree = f.tree()
+    node = tree.node_at(at)
+    if node < 0:
+        raise SaveError("无法定位军团资源池。")
+    out = tree.splice(node, slots[slot_index][0], 17, b"\x00")
+    expected = [record for _, record in slots]
+    expected[slot_index] = None
+    if [record for _, record in _legion_slots(SaveFile(out), at)] != expected:
+        raise SaveError("移除军团未通过读回校验。")
     return out
 
 

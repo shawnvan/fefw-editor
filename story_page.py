@@ -210,7 +210,7 @@ class StoryPageMixin:
                                  '请在下方地址反馈存档状态和卡住的目标：\n' +
                                  story_troubleshoot.ISSUES_URL, parent=self); return
         win = tk.Toplevel(self); win.withdraw(); win.title('排查进度卡点'); win.transient(self)
-        self.place_dialog(win, 740, 570); win.deiconify(); win.configure(background=self.p['bg'])
+        win.configure(background=self.p['bg'])
         frame = ttk.Frame(win, padding=18); frame.pack(fill='both', expand=True)
         buttons = ttk.Frame(frame); buttons.pack(side='bottom', fill='x')
         ttk.Label(frame, text=report.progress.label, style='CardH3.TLabel').pack(anchor='w')
@@ -250,7 +250,7 @@ class StoryPageMixin:
         if not report.actionable or self.mirror.get():
             apply_button.state(['disabled'])
         ttk.Button(buttons, text='关闭', command=win.destroy).pack(side='right', padx=8)
-        win.bind('<Escape>', lambda e: win.destroy()); win.grab_set(); self.wait_window(win)
+        win.bind('<Escape>', lambda e: win.destroy()); self.show_dialog(win, 740, 570); self.wait_window(win)
 
     def apply_progress_repair(self, slot, snapshot):
         if self.sv is not slot or bytes(slot.payload) != snapshot:
@@ -297,7 +297,6 @@ class StoryPageMixin:
         info = story.read(core.SaveFile(self.sv.payload))
         route, part = info.route, info.part
         win = tk.Toplevel(self); win.withdraw(); win.title(WARNING_TITLE); win.transient(self)
-        self.place_dialog(win, 720, 570); win.deiconify()
         win.configure(background=self.p['bg']); win.resizable(False, False)
         frame = ttk.Frame(win, padding=20); frame.pack(fill='both', expand=True)
         ttk.Label(frame, text=WARNING_TITLE, style='CardH3.TLabel', wraplength=670).pack(anchor='w', pady=(0, 12))
@@ -311,9 +310,9 @@ class StoryPageMixin:
         buttons = ttk.Frame(frame); buttons.pack(side='bottom', fill='x', pady=(10, 0))
         ttk.Button(buttons, text='继续', command=lambda: finish(True)).pack(side='right')
         cancel = ttk.Button(buttons, text='取消', command=lambda: finish(False))
-        cancel.pack(side='right', padx=8); cancel.focus_set()
+        cancel.pack(side='right', padx=8)
         win.bind('<Escape>', lambda e: finish(False)); win.protocol('WM_DELETE_WINDOW', lambda: finish(False))
-        win.grab_set(); self.wait_window(win)
+        self.show_dialog(win, 720, 570, focus=cancel); self.wait_window(win)
         return result[0]
 
     def _choose_story_chapter(self):
@@ -323,7 +322,7 @@ class StoryPageMixin:
         section = '区分' if info.part == 3 else '章节'
         chapters = story_start.chapters_for(info.route, info.part)
         win = tk.Toplevel(self); win.withdraw(); win.title(f'{lord} · {part} · 选择{section}'); win.transient(self)
-        self.place_dialog(win, 680, 540); win.deiconify(); win.configure(background=self.p['bg'])
+        win.configure(background=self.p['bg'])
         frame = ttk.Frame(win, padding=18); frame.pack(fill='both', expand=True)
         ttk.Label(frame, text=f'选择起始{section}', style='CardH3.TLabel').pack(anchor='w')
         limit = {4: '第1章不可选。', 1: '凯伊第3章起也会开放下水道。',
@@ -361,7 +360,7 @@ class StoryPageMixin:
                 result[0] = (int(picked[0]), create_file.get()); win.destroy()
         ttk.Button(buttons, text='应用起始进度', command=apply).pack(side='right')
         ttk.Button(buttons, text='取消', command=win.destroy).pack(side='right', padx=8)
-        win.bind('<Escape>', lambda e: win.destroy()); win.grab_set(); self.wait_window(win)
+        win.bind('<Escape>', lambda e: win.destroy()); self.show_dialog(win, 680, 540); self.wait_window(win)
         return result[0]
 
     def apply_story_chapter(self, chapter, create_file=False):

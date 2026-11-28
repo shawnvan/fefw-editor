@@ -254,7 +254,7 @@ class Avatar(tk.Canvas):
             return
         self.create_oval(2, 2, s - 2, s - 2, fill=_name_color(self._name), outline="")
         self.create_text(s // 2, s // 2, text=_initials(self._name), fill="#10131a",
-                         font=(self.app.family, int(s * 0.3), "bold"))
+                         font=(self.app.family, -max(10, int(s * 0.36)), "bold"))
 
 
 def scrolled_tree(master, **kw) -> ttk.Treeview:
@@ -450,9 +450,9 @@ class _PageStack(ttk.Frame):
         key = str(child)
         self._pages.append(child)
         self._titles[key] = text
-        child.grid(row=0, column=0, sticky="nsew")
         if not self._current:
             self._current = key
+            child.grid(row=0, column=0, sticky="nsew")
             child.lift()
 
     def tabs(self) -> tuple[str, ...]:
@@ -470,16 +470,29 @@ class _PageStack(ttk.Frame):
         key = str(page_id)
         if key not in self._titles or key == self._current:
             return self._current
+        prev = next((p for p in self._pages if str(p) == self._current), None)
+        nxt = next((p for p in self._pages if str(p) == key), None)
         self._current = key
-        for p in self._pages:
-            if str(p) == key:
-                p.lift()
-                break
+        if nxt is not None:
+            nxt.grid(row=0, column=0, sticky="nsew")
+            nxt.lift()
+        if prev is not None:
+            prev.grid_remove()
         self.event_generate("<<NotebookTabChanged>>")
         return self._current
 
+    def _step(self, delta: int):
+        if not self._pages:
+            return None
+        cur = next((i for i, p in enumerate(self._pages) if str(p) == self._current), 0)
+        self.select(self._pages[(cur + delta) % len(self._pages)])
+        return "break"
+
     def enable_traversal(self):
-        pass
+        top = self.winfo_toplevel()
+        top.bind("<Control-Tab>", lambda _e: self._step(1))
+        top.bind("<Control-Shift-Tab>", lambda _e: self._step(-1))
+        top.bind("<Control-ISO_Left_Tab>", lambda _e: self._step(-1))
 
 
 class App(AdvancedMixin, tk.Tk):
@@ -590,6 +603,27 @@ class App(AdvancedMixin, tk.Tk):
         x = max(0, min(x, sw - w))
         y = max(0, min(y, sh - h))
         win.geometry(f"{w}x{h}+{x}+{y}")
+
+    def show_dialog(self, win, w: int | None = None, h: int | None = None,
+                    *, grab: bool = True, focus=None):
+        """Place, reveal and optionally grab a withdrawn dialog cleanly."""
+        self.place_dialog(win, w, h)
+        win.deiconify()
+        if grab:
+            try:
+                win.grab_set()
+            except tk.TclError:
+                try:
+                    if self.winfo_viewable():
+                        win.wait_visibility()
+                    win.grab_set()
+                except tk.TclError:
+                    pass
+        target = focus if focus is not None else win
+        try:
+            target.focus_set()
+        except tk.TclError:
+            pass
 
     def _fonts(self):
         fam = _pick_family(["Segoe UI Variable Text", "Segoe UI", "Inter", "SF Pro Text",
@@ -877,11 +911,15 @@ class App(AdvancedMixin, tk.Tk):
                 if side % size == 0:
                     img = img.subsample(side // size, side // size)
                 else:
-                    frac = Fraction(size, side).limit_denominator(6)
-                    if frac.numerator > 1:
-                        img = img.zoom(frac.numerator, frac.numerator)
-                    if frac.denominator > 1:
-                        img = img.subsample(frac.denominator, frac.denominator)
+                    frac = Fraction(size, side).limit_denominator(max(6, (side + size - 1) // size))
+                    if frac.numerator == 0:
+                        factor = max(1, round(side / size))
+                        img = img.subsample(factor, factor)
+                    else:
+                        if frac.numerator > 1:
+                            img = img.zoom(frac.numerator, frac.numerator)
+                        if frac.denominator > 1:
+                            img = img.subsample(frac.denominator, frac.denominator)
         except tk.TclError:
             img = None
         self._img_cache[key] = img
@@ -1088,7 +1126,7 @@ class App(AdvancedMixin, tk.Tk):
                 self._nav_page_by_iid[p_str] = page
                 self._nav_iid_by_page[p_str] = p_str
                 self.nav_tree.insert(g_iid, "end", iid=p_str, text=f"  {label}")
-        self.nav_tree.column("#0", width=self.px(148), minwidth=self.px(120))
+        self.nav_tree.column("#0", width=148, minwidth=120)
 
         def _nav_selected(_event=None):
             sel = self.nav_tree.selection()
@@ -1141,12 +1179,14 @@ class App(AdvancedMixin, tk.Tk):
         Unit and blessing lists drive edit forms, so stay single-choice; every
         other table (convoy, classes, masteries, flags, mounts) takes a range.
         """
-        skip = {id(getattr(self, "unit_tree", None)),
+        skip = {id(getattr(self, "nav_tree", None)),
+                id(getattr(self, "unit_tree", None)),
                 id(getattr(self, "cls_unit_tree", None)),
                 id(getattr(self, "blessing_tree", None)),
                 id(getattr(self, "deed_tree", None)),
                 id(getattr(self, "boon_tree", None)),
-                id(getattr(self, "facility_access_tree", None))}
+                id(getattr(self, "facility_access_tree", None)),
+                id(getattr(self, "quest_tree", None))}
 
         def walk(w):
             for child in w.winfo_children():
@@ -1828,11 +1868,11 @@ class App(AdvancedMixin, tk.Tk):
                   if e.widget is self else None)
 
     def _select_all_focused(self, _e=None):
-        """Ctrl+A in a table selects every row; elsewhere it stays normal."""
+        """Ctrl+A in a multi-select table selects every row; elsewhere it stays normal."""
         w = self.focus_get()
-        if not isinstance(w, ttk.Treeview):
+        if not isinstance(w, ttk.Treeview) or w is getattr(self, "nav_tree", None):
             w = last_tree()
-        if isinstance(w, ttk.Treeview):
+        if isinstance(w, ttk.Treeview) and str(w.cget("selectmode")) == "extended":
             rows = w.get_children("")
             if rows:
                 w.selection_set(rows)
@@ -2523,7 +2563,7 @@ class App(AdvancedMixin, tk.Tk):
                 name = os.path.basename(sv.path)
                 try:
                     sf = self.core_of(sv)
-                    su = layer.unit_in(sf, u.uid)
+                    su = costumes._find_unit(sf, u.uid)
                     if not su:
                         continue
                     sinfo = layer.route_info(sv.payload)
@@ -2571,10 +2611,7 @@ class App(AdvancedMixin, tk.Tk):
         ttk.Button(bar, text='取消', command=win.destroy).pack(side="right", padx=(0, 8))
 
         win.bind("<Escape>", lambda _e: win.destroy())
-        self.place_dialog(win, 560, 400)
-        win.deiconify()
-        win.grab_set()
-        win.focus_set()
+        self.show_dialog(win, 560, 400)
 
     def _update_copies_chip(self, u):
         """One record per unit now: the chip says what the game will read."""

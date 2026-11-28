@@ -138,8 +138,9 @@ class MapPageMixin:
             for n, road in enumerate(cat.roads):
                 pts = [recs.get(cat.spots[i].key) for i in road]
                 name = cat.road_name(road)
+                en = "%s %s" % (cat.spots[road[0]].en, cat.spots[road[-1]].en)
                 jp = "%s \u2192 %s" % (cat.spots[road[0]].jp, cat.spots[road[-1]].jp)
-                if any(r is None for r in pts) or (q and q not in (name + " " + jp).lower()):
+                if any(r is None for r in pts) or (q and q not in (name + " " + en + " " + jp).lower()):
                     continue
                 on = sum(1 for r in pts if r.state == wm.SHOWN)
                 state = ("已显示" if on == len(pts) else "隐藏" if on == 0

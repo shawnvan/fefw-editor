@@ -169,10 +169,10 @@ class UnitEntryPageMixin:
         apply=ttk.Button(bar,text='添加单位',style='Accent.TButton',command=commit);apply.pack(side='right')
         ttk.Button(bar,text='取消',command=win.destroy).pack(side='right',padx=8)
         search.bind('<KeyRelease>',fill);tree.bind('<<TreeviewSelect>>',choose)
-        self.place_dialog(win,920,760)
+        fill()
         win.minsize(min(self.px(580),win.winfo_screenwidth()-40),
                     min(self.px(420),win.winfo_screenheight()-80))
-        fill();win.deiconify();search.focus_set();win.grab_set();self.wait_window(win)
+        self.show_dialog(win,920,760,focus=search);self.wait_window(win)
 
     def open_unit_number(self):
         if not self._unit_entry_ready() or self.uid is None:return

@@ -240,8 +240,6 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         win.title(title)
         win.transient(self)
         width, height = (640, 540) if browse_only else (560, 460)
-        self.place_dialog(win, width, height)
-        win.deiconify()
         win.configure(background=self.p["bg"])
         top = ttk.Frame(win, padding=10)
         top.pack(fill="x")
@@ -282,6 +280,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
                         first = next((iid for iid, key in iids.items() if can_confirm(key)), first)
                     tree.selection_set(first)
                     tree.see(first)
+            if preview_text is not None or can_confirm is not None:
                 update_selection()
 
         def selected_key():
@@ -346,7 +345,7 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         tree.pack(side="left", fill="both", expand=True, padx=(10, 0))
         sb.pack(side="left", fill="y", padx=(0, 10))
         fill()
-        ent.focus_set()
+        self.show_dialog(win, width, height, grab=False, focus=ent)
         self.wait_window(win)
         return result["key"]
 
@@ -1451,10 +1450,13 @@ def _ask_number(parent, title: str, prompt: str, current: int, limit: int):
     ttk.Button(bar, text='确定', style="Accent.TButton", command=ok).pack(side="right")
     ttk.Button(bar, text='取消', command=win.destroy).pack(side="right", padx=(0, 8))
     ent.bind("<Return>", ok)
-    if hasattr(parent, "place_dialog"):
-        parent.place_dialog(win)
-    win.deiconify()
-    ent.focus_set()
+    if hasattr(parent, "show_dialog"):
+        parent.show_dialog(win, grab=False, focus=ent)
+    else:
+        if hasattr(parent, "place_dialog"):
+            parent.place_dialog(win)
+        win.deiconify()
+        ent.focus_set()
     ent.select_range(0, "end")
     parent.wait_window(win)
     return out["v"]
@@ -1695,8 +1697,6 @@ def open_learnset_completion(self, person: int | None = None):
     win.withdraw()
     win.title("按熟练度/兵种补全战技与特技")
     win.transient(self)
-    self.place_dialog(win, 800, 580)
-    win.deiconify()
     win.configure(background=self.p["bg"])
 
     top = ttk.Frame(win, style="Card.TFrame", padding=(14, 12))
@@ -2071,8 +2071,7 @@ def open_learnset_completion(self, person: int | None = None):
     win.bind("<Destroy>", _on_destroy)
     win.bind("<Escape>", _close_dialog)
     refresh_preview()
-    win.grab_set()
-    win.focus_set()
+    self.show_dialog(win, 800, 580)
 
 
 def remove_skill(self, index: int):
@@ -2316,7 +2315,7 @@ def refresh_mounts(self):
         sections = []
         if bat:
             bat_txt, _, info = describe(bat)
-            if bat.owner == g.unit_number and bat in known:
+            if bat.owner and bat.owner == g.unit_number and bat in known:
                 equipped[(bat.id, g.unit_number)] = u.name
             else:
                 bat_txt += "（归属待核对）"
@@ -2335,8 +2334,8 @@ def refresh_mounts(self):
         self._mount_details[self.mount_tree, iid] = "\n\n".join(sections)
     for i, legion in enumerate(pool):
         name, rank, info = describe(legion)
-        owner = equipped.get((legion.id, legion.owner),
-                             f"归属待核对（{legion.owner}）" if legion.owner else "未配属")
+        owner = (equipped.get((legion.id, legion.owner), f"归属待核对（{legion.owner}）")
+                 if legion.owner else "未配属")
         iid = self.pool_tree.insert("", "end", text=name, values=(rank, owner), iid=f"b{i}")
         self._mount_details[self.pool_tree, iid] = f"{name}　·　{owner}\n{info}"
         self._pool_rows[iid] = ("battalion", i)
@@ -2409,23 +2408,15 @@ def remove_pool_entry(self):
         return
     kind, key = self._pool_rows.get(psel[0], (None, None)) if psel else (None, None)
     if kind == "battalion":
-        self._core_edit(lambda f: layer_del_battalion(f, key), "已从资源池移除军团兵")
+        name = self.pool_tree.item(psel[0], "text")
+        self._core_edit(lambda f: layer.with_removed_battalion(f, key),
+                        f"已从资源池移除 {name}", current_only=True)
     elif kind == "ride":
         name = self.pool_tree.item(psel[0], "text")
         self._core_edit(lambda f: layer.with_removed_ride(f, key),
                         f"已从资源池移除 {name}", current_only=True)
     else:
         self.flash("请先在右侧资源池选中要移除的军团兵或坐骑。", "info")
-
-
-def layer_del_battalion(f, idx: int):
-    st = core.party_store(f)
-    if not st:
-        return None
-    pool = core.legions(f, st[2])
-    if not (0 <= idx < len(pool)):
-        return None
-    return core.with_legions(f, st[2], [l for i, l in enumerate(pool) if i != idx])
 
 
 # ------------------------------------------------------- units: copy / remove
@@ -2516,7 +2507,7 @@ def add_convoy_item_ui(self):
                 lambda f: (layer.add_convoy_copies(f.payload, iid, qty) and f.payload) or None,
                 f"道具袋：已添加 {layer.item_label(iid)} ×{qty}（每件一槽）"):
             self.refresh_convoy()
-            return
+        return
     home = layer.convoy_home(iid, conv.slots) if conv else None
     if home is None:
         self.flash(f"{layer.item_label(iid)} 没有自己独立的道具袋槽位。", "warn")

@@ -301,10 +301,10 @@ def main() -> int:
                   "items": zh_table(zh_dir, "Item.msbt.zst", "MIID")}.get(category, {})
         for key, record in table.items():
             suffix = norm(record.get(field, ""))
-            if category == "classes" and suffix.startswith("JID_"):
-                suffix = suffix[4:]
-            elif category != "classes" and suffix.startswith(("PID_", "MIID_")):
-                suffix = suffix[4:]
+            if category == "classes":
+                suffix = suffix.removeprefix("JID_")
+            else:
+                suffix = suffix.removeprefix("PID_").removeprefix("MIID_")
             if category == "items":
                 suffix = re.sub(r"\+\d+$", "", suffix)
             official = direct.get(suffix)

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import struct
 import sys
 from pathlib import Path
@@ -111,7 +112,7 @@ def _build_recruitments(here: Path, sidestories: list[dict], subquests: list[dic
         lockout_flags = [
             {"name": name, "hash": f_hex}
             for name, f_hex in sorted(fn_names.items())
-            if f"{jp}が" in name and "加入した" in name
+            if re.search(rf"(?:_|と){re.escape(jp)}(?:が|と)", name) and "加入した" in name
         ]
         # Match negotiation subquests like SQID_<jp>交渉*
         rel_sq = [k for k in sq_keys if k.startswith(f"SQID_{jp}交渉")]

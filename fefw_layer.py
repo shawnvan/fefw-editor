@@ -1078,13 +1078,46 @@ def with_battalion_assignment(f: core.SaveFile, uid: int, index: int | None, *,
     return out.payload
 
 
+def with_removed_battalion(f: core.SaveFile, index: int) -> bytearray:
+    """Unequip any holder and clear the matching battalion slot without compacting."""
+    import unit_entries
+
+    if unit_entries.context(f) not in ("free-time", "chapter-start"):
+        raise core.SaveError("请在自由行动或章节开始存档中移除军团。")
+    store = core.party_store(f)
+    if store is None:
+        raise core.SaveError("无法定位此存档的军团资源池。")
+    slots = core.editable_legion_slots(f, store[2])
+    entries = [(slot_idx, record) for slot_idx, (_, record) in enumerate(slots)
+               if record is not None]
+    if not 0 <= index < len(entries):
+        raise core.SaveError("所选军团已不在资源池中。")
+    slot_index, legion = entries[index]
+    holders = [(u, gear) for _, _, _, rows in unit_entries.pool_groups(f) for u, gear in rows
+               if gear.legion is not None and gear.legion == legion]
+    if legion.owner:
+        if len(holders) != 1 or holders[0][1].unit_number != legion.owner:
+            raise core.SaveError("军团归属与单位装备不一致，无法移除。")
+        f = core.SaveFile(with_battalion_assignment(f, holders[0][0].person, None))
+        store = core.party_store(f)
+        if store is None:
+            raise core.SaveError("无法定位此存档的军团资源池。")
+    else:
+        if holders:
+            raise core.SaveError("所选军团仍被单位引用，无法移除。")
+        secondary = core.reliquary_store(f)
+        remaining_ids = {rec.id for s_idx, (_, rec) in enumerate(slots)
+                         if rec is not None and s_idx != slot_index}
+        if secondary and secondary[2] != store[2]:
+            remaining_ids.update(rec.id for rec in core.legions(f, secondary[2]))
+        if legion.id not in remaining_ids and any(
+            gear.legion is not None and gear.legion.id == legion.id
+            for _, _, _, rows in unit_entries.pool_groups(f) for _, gear in rows
+        ):
+            raise core.SaveError("仍有单位携带同编号军团记录，请先通过重新配属修复后再移除。")
+    return core.with_removed_legion(f, store[2], slot_index)
+
+
 def remove_battalion(payload: bytearray, index: int) -> bool:
-    f = core.SaveFile(bytes(payload))
-    st = core.party_store(f)
-    if not st:
-        return False
-    pool = core.legions(f, st[2])
-    if not (0 <= index < len(pool)):
-        return False
-    payload[:] = core.with_legions(f, st[2], [l for i, l in enumerate(pool) if i != index])
+    payload[:] = with_removed_battalion(core.SaveFile(bytes(payload)), index)
     return True

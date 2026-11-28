@@ -211,17 +211,16 @@ def _support_met(
     for pr in supports.pairs():
         if {pr.get("a"), pr.get("b")} == {lord_jp, target_jp}:
             pair_flags = pr.get("flags") or {}
-            if rank in pair_flags:
-                h = pair_flags[rank]
-                if flag_values.get(h & 0xFFFFFFFF, 0) > 0:
-                    return True, f"支援 {rank}（已达成对话）"
-                if pts is not None and pts >= supports.LEVEL_POINTS[min(level, len(supports.LEVEL_POINTS) - 1)]:
-                    return True, f"支援 {rank}（好感点数 {pts} 已达标）"
-                return False, f"需与{lord_jp}达到支援 {rank}（未达成）"
-            if pts is not None:
-                return None, f"需与{lord_jp}达到支援 {rank}（当前好感 {pts}，请以游戏内为准）"
-            return None, f"需与{lord_jp}达到支援 {rank}（请以游戏内为准）"
-    return None, f"需支援 {rank}"
+            h = pair_flags.get(rank)
+            if h is not None and flag_values.get(h & 0xFFFFFFFF, 0) > 0:
+                return True, f"支援 {rank}（已达成对话）"
+            break
+    if pts is not None:
+        threshold = supports.LEVEL_POINTS[min(level, len(supports.LEVEL_POINTS) - 1)]
+        if pts >= threshold:
+            return True, f"支援 {rank}（好感点数 {pts} 已达标）"
+        return False, f"需与{lord_jp}达到支援 {rank}（好感 {pts}/{threshold}，未达成）"
+    return None, f"需与{lord_jp}达到支援 {rank}（无好感记录）"
 
 
 def _cmp_md_time(month: int, day: int, hour: int, minute: int,
@@ -284,11 +283,11 @@ def read(f: core.SaveFile) -> dict:
             flags, point_lookup, ctx.route,
             row["support_pid"], row["support_level"], already_triggered)
 
-        if ctx.part > 1:
+        if ctx.part > 1 or (ctx.part == 1 and ctx.year > 1449):
             past_occur = True
             past_accept = True
             before_start = False
-        elif ctx.part < 1:
+        elif ctx.part < 1 or (ctx.part == 1 and ctx.year < 1449):
             past_occur = False
             past_accept = False
             before_start = True
@@ -421,6 +420,8 @@ def read(f: core.SaveFile) -> dict:
             win_str = f"第{sp}部第{sc}章 ~ 第{ep}部第{ec}章"
         elif sp > 0:
             win_str = f"第{sp}部第{sc}章起"
+        elif ep > 0:
+            win_str = f"至第{ep}部第{ec}章"
         else:
             win_str = "—"
 
