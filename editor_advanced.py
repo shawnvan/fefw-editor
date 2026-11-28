@@ -1263,6 +1263,20 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
         maps = core.flag_maps(f)
         return maps[0].index if maps else -1
 
+    def sup_toggle_rank(self, rank: str):
+        """Toggle the <rank> (C/B/A/S) seen flag directly from its checkbox."""
+        sel = self.sup_tree.selection() if hasattr(self, "sup_tree") else ()
+        if not self.sv:
+            self._sync_support_checks(sel)
+            self.flash("请先打开一个存档。", "info")
+            return
+        want = bool(self.sup_rank_vars[rank].get()) if hasattr(self, "sup_rank_vars") else True
+        if want:
+            self.sup_set_rank(rank)
+        else:
+            self.sup_clear_rank(rank, confirm=False)
+        self._sync_support_checks(self.sup_tree.selection() if hasattr(self, "sup_tree") else ())
+
     def sup_set_rank(self, rank: str):
         """Mark the <rank> conversation as seen for every selected pair."""
         sel = self.sup_tree.selection() if hasattr(self, "sup_tree") else ()
@@ -1309,36 +1323,55 @@ class AdvancedMixin(MapPageMixin, TutorialPageMixin, BlessingPageMixin, FastTrav
             self.flash("请先在支援页选择一个支援对象。", "info")
             return
         pair, fl = rows[sel[0]]
-        ranks = [(r, r, "") for r in ("C", "B", "A") if fl.get(r)]
+        ranks = [(r, r, "") for r in ("C", "B", "A", "S") if fl.get(r)]
         if not ranks:
             self.flash("游戏数据中这对单位没有任何对话。", "error")
             return
         rank = self._picker("要清除哪段对话？", ranks)
         if rank:
-            self.sup_clear_rank(rank)
+            self.sup_clear_rank(rank, confirm=True)
 
-    def sup_clear_rank(self, rank: str):
+    def sup_clear_rank(self, rank: str, *, confirm: bool = True):
         sel = self.sup_tree.selection() if hasattr(self, "sup_tree") else ()
         rows = getattr(self, "_sup_pairs", {})
-        if not sel or sel[0] not in rows:
+        picked = [rows[i] for i in sel if i in rows]
+        if not picked:
             return
-        pair, fl = rows[sel[0]]
-        hash_ = (fl or {}).get(rank)
-        if not hash_:
+        f = self.core_of()
+        have = {x.hash for m in core.flag_maps(f) for x in m.flags}
+        todo = [(pair, fl[rank]) for pair, fl in picked
+                if (fl or {}).get(rank) and fl[rank] in have]
+        if not todo:
             return
-        if not messagebox.askyesno("存档编辑器",
-                                   f"清除 {pair['a_en']} 与 {pair['b_en']} 的 "
-                                   f"{rank} 对话记录？", parent=self):
+        pair = todo[0][0]
+        who = pair["b_en"] if len(todo) == 1 else f"{len(todo)} 名对象"
+        if confirm and not messagebox.askyesno(
+            "存档编辑器",
+            f"清除 {pair['a_en']} 与 {who} 的 {rank} 对话记录？",
+            parent=self,
+        ):
             return
+        hashes = {h for _p, h in todo}
 
         def edit(g):
-            for m in core.flag_maps(g):
-                for x in m.flags:
-                    if x.hash == hash_:
-                        return core.flag_remove(g, m, x)
-            return None
+            changed = False
+            for h in list(hashes):
+                removed = False
+                for m in core.flag_maps(g):
+                    for x in m.flags:
+                        if x.hash == h:
+                            out = core.flag_remove(g, m, x)
+                            if out is None:
+                                return None
+                            g = core.SaveFile(out)
+                            changed = True
+                            removed = True
+                            break
+                    if removed:
+                        break
+            return g.payload if changed else None
 
-        self._core_edit(edit, f"已清除支援对话：{pair['a_en']} – {pair['b_en']}（{rank}）")
+        self._core_edit(edit, f"已清除支援对话：{pair['a_en']} – {who}（{rank}）")
         self.refresh_support_chars()
 
 

@@ -1563,11 +1563,10 @@ class App(AdvancedMixin, tk.Tk):
 
         # the note is packed before the table so a short window shrinks the
         # table instead of pushing the buttons and the note out of sight
-        ttk.Label(main, style="CardFaint.TLabel", justify="left", wraplength=620,
+        ttk.Label(main, style="CardFaint.TLabel", justify="left", wraplength=700,
                   text="支援LV 1 至 5 的起始支援值分别为 0、400、1,400、2,400、3,200。"
-                       "3,200 已在游戏内验证，其余阈值来自社区资料。"
-                       "游戏可能要等到支援关系开启后才会显示数值。"
-                       "对话记录中的 C、B、A 等表示已记录的支援对话等级。"
+                       "可直接勾选 C / B / A / S 记录或取消对应支援对话；"
+                       "解锁状态与条件来自 GameData/Reliance.bin，按当前存档路线、部/章与已触发标记实时判定。"
                   ).pack(side="bottom", fill="x", anchor="w", padx=(12, 0), pady=(10, 0))
 
         body = ttk.Frame(main, style="Card.TFrame", padding=(12, 10))
@@ -1575,10 +1574,16 @@ class App(AdvancedMixin, tk.Tk):
 
         acts = ttk.Frame(body, style="Card.TFrame")
         acts.pack(side="bottom", fill="x", pady=(8, 0))
-        ttk.Label(acts, text='将对话设为已确认：', style="Card.TLabel").pack(side="left")
-        for r in ("C", "B", "A"):
-            ttk.Button(acts, text=r, width=3, style="Small.TButton",
-                       command=lambda rr=r: self.sup_set_rank(rr)).pack(side="left", padx=(6, 0))
+        ttk.Label(acts, text='已确认对话（直接勾选）：', style="Card.TLabel").pack(side="left")
+        self.sup_rank_vars: dict[str, tk.BooleanVar] = {}
+        self.sup_rank_checks: dict[str, ttk.Checkbutton] = {}
+        for r in supports.RANKS:
+            var = tk.BooleanVar(value=False)
+            cb = ttk.Checkbutton(acts, text=r, style="Card.TCheckbutton", variable=var,
+                                 command=lambda rr=r: self.sup_toggle_rank(rr))
+            cb.pack(side="left", padx=(6, 0))
+            self.sup_rank_vars[r] = var
+            self.sup_rank_checks[r] = cb
         ttk.Button(acts, text='清除…', style="Small.TButton",
                    command=self.sup_forget_rank).pack(side="left", padx=(12, 0))
         self.sup_write_lbl = ttk.Label(acts, text="", style="CardFaint.TLabel")
@@ -1603,24 +1608,35 @@ class App(AdvancedMixin, tk.Tk):
         self.sup_pt_lbl = ttk.Label(pts, text="", style="CardFaint.TLabel")
         self.sup_pt_lbl.pack(side="left", padx=(12, 0))
 
-        self.sup_tree = scrolled_tree(body, columns=("jp", "points", "lv", "next", "max", "seen", "party"),
+        cond_box = ttk.Frame(body, style="Card.TFrame")
+        cond_box.pack(side="bottom", fill="x", pady=(8, 0))
+        self.sup_cond_lbl = ttk.Label(
+            cond_box,
+            text="选择一组支援对象，查看各等级（C / B / A / S）的路线、章节窗口与前置/顺序锁条件。",
+            style="CardMuted.TLabel", justify="left", wraplength=720,
+        )
+        self.sup_cond_lbl.pack(anchor="w", fill="x")
+
+        self.sup_tree = scrolled_tree(body, columns=("jp", "points", "lv", "next", "max", "seen", "cond", "party"),
                                       show="tree headings", selectmode="browse")
         self.sup_tree.heading("#0", text='支援对象', anchor="w")
         self.sup_tree.heading("jp", text='日文', anchor="w")
         self.sup_tree.heading("points", text='支援值', anchor="e")
         self.sup_tree.heading("lv", text='支援LV', anchor="center")
         self.sup_tree.heading("next", text='下级支援值阈值', anchor="e")
-        self.sup_tree.heading("max", text='最高对话等级', anchor="center")
-        self.sup_tree.heading("seen", text='已确认的对话', anchor="w")
+        self.sup_tree.heading("max", text='最高等级', anchor="center")
+        self.sup_tree.heading("seen", text='已确认对话', anchor="w")
+        self.sup_tree.heading("cond", text='解锁状态', anchor="w")
         self.sup_tree.heading("party", text='在队伍中', anchor="center")
-        self.sup_tree.column("#0", width=180, minwidth=130)
-        self.sup_tree.column("jp", width=140)
-        self.sup_tree.column("points", width=64, anchor="e", stretch=False)
-        self.sup_tree.column("lv", width=40, anchor="center", stretch=False)
-        self.sup_tree.column("next", width=96, anchor="e", stretch=False)
-        self.sup_tree.column("max", width=88, anchor="center", stretch=False)
-        self.sup_tree.column("seen", width=160, stretch=False)
-        self.sup_tree.column("party", width=74, anchor="center", stretch=False)
+        self.sup_tree.column("#0", width=150, minwidth=110)
+        self.sup_tree.column("jp", width=110)
+        self.sup_tree.column("points", width=62, anchor="e", stretch=False)
+        self.sup_tree.column("lv", width=44, anchor="center", stretch=False)
+        self.sup_tree.column("next", width=88, anchor="e", stretch=False)
+        self.sup_tree.column("max", width=62, anchor="center", stretch=False)
+        self.sup_tree.column("seen", width=92, stretch=False)
+        self.sup_tree.column("cond", width=118, stretch=False)
+        self.sup_tree.column("party", width=62, anchor="center", stretch=False)
         self.sup_tree.container.pack(fill="both", expand=True)
         self.sup_tree.bind("<<TreeviewSelect>>", self.on_support_pair)
 
@@ -1661,6 +1677,20 @@ class App(AdvancedMixin, tk.Tk):
             table = None
         self._sup_pt_cache = (key, table)
         return table
+
+    def _support_context(self) -> tuple[int | None, int | None, int | None]:
+        """Current save (route, part, chapter) from Header, or (None, None, None)."""
+        if not self.sv:
+            return None, None, None
+        try:
+            f = self.core_of()
+            hdr = f.block("Header")
+            if hdr and hdr.end - hdr.start >= 15:
+                route, part, chapter = f.payload[hdr.start + 12:hdr.start + 15]
+                return int(route), int(part), int(chapter)
+        except Exception:  # noqa: BLE001
+            pass
+        return None, None, None
 
     def _sup_chars(self) -> list[tuple[str, dict]]:
         """Every character the point table knows, with the conversation chart merged in."""
@@ -1769,11 +1799,13 @@ class App(AdvancedMixin, tk.Tk):
         present = self._support_flags()
         points = self._support_points()
         party = self._party_pids()
+        route, part, chapter = self._support_context()
         keep = getattr(self, "_sup_partner", None)
         plist = self._sup_partners(jp, rec, points)
         self.sup_tree.delete(*self.sup_tree.get_children())
         self._sup_pairs = {}
         self._sup_pt = {}
+        self._sup_eval = {}
         iids: dict[str, str] = {}
         seen_pairs = 0
         for pa in plist:
@@ -1782,6 +1814,25 @@ class App(AdvancedMixin, tk.Tk):
                 seen_pairs += 1
             pts = pa["points"]
             partner_name = self._support_name(pa["jp"], pa["en"])
+            ev = supports.evaluate_pair(
+                pa["chart"],
+                points=pts,
+                present_flags=present,
+                party_pids=party,
+                route=route,
+                part=part,
+                chapter=chapter,
+                name_fn=self._support_name,
+            )
+            st = ev["status"]
+            if st in ("locked_order", "expired"):
+                tag = "sup_danger"
+            elif st == "available":
+                tag = "sup_avail"
+            elif got or pts:
+                tag = "sup_seen"
+            else:
+                tag = "sup_none"
             iid = self.sup_tree.insert(
                 "", "end", text=partner_name,
                 values=(pa["jp"],
@@ -1790,10 +1841,12 @@ class App(AdvancedMixin, tk.Tk):
                         self._next_level_text(pts),
                         pa["chart"].get("max") or "—",
                         ", ".join(got) if got else "—",
+                        ev["badge"],
                         "✓" if ("PID_" + pa["jp"]) in party else ""),
-                tags=("sup_seen",) if (got or pts) else ("sup_none",))
+                tags=(tag,))
             self._sup_pairs[iid] = ({"a_en": en, "b_en": partner_name},
                                     dict(pa["chart"].get("flags") or {}))
+            self._sup_eval[iid] = ev
             if pa["hash"] is not None:
                 self._sup_pt[iid] = (pa["hash"], pts, pa["jp"])
             iids[pa["jp"]] = iid
@@ -1821,16 +1874,61 @@ class App(AdvancedMixin, tk.Tk):
         nxt = supports.next_level_at(pts)
         return "已满级" if nxt is None else f"{nxt:,}"
 
+    def _sync_support_checks(self, sel):
+        if not hasattr(self, "sup_rank_checks"):
+            return
+        rows = getattr(self, "_sup_pairs", {})
+        picked = [rows[i][1] for i in sel if i in rows]
+        present = self._support_flags() if self.sv else set()
+        for r in supports.RANKS:
+            cb = self.sup_rank_checks[r]
+            var = self.sup_rank_vars[r]
+            hashes = [fl[r] for fl in picked if (fl or {}).get(r)]
+            if not hashes:
+                var.set(False)
+                cb.state(["disabled"])
+            else:
+                cb.state(["!disabled"])
+                var.set(bool(self.sv) and all(h in present for h in hashes))
+
     def on_support_pair(self, _e=None):
-        """Mirror the selected pair's points into the editor row."""
+        """Mirror the selected pair's points, rank checkboxes, and unlock conditions."""
         if not hasattr(self, "sup_pt_var"):
             return
         sel = self.sup_tree.selection() if hasattr(self, "sup_tree") else ()
         pt = getattr(self, "_sup_pt", {})
+        ev_map = getattr(self, "_sup_eval", {})
         if sel:
             # remember the selection by name so a rebuild can restore it
             self._sup_keep = [self.sup_tree.item(i, "values")[0] for i in sel]
             self._sup_partner = self._sup_keep[0]
+        self._sync_support_checks(sel)
+
+        # Update condition detail panel
+        if hasattr(self, "sup_cond_lbl"):
+            if not sel:
+                self.sup_cond_lbl.configure(
+                    text="选择一组支援对象，查看各等级（C / B / A / S）的路线、章节窗口与前置/顺序锁条件。")
+            elif len(sel) > 1:
+                self.sup_cond_lbl.configure(
+                    text=f"已选择 {len(sel)} 组支援：直接勾选 C / B / A / S 可批量记录或清除对应支援对话。")
+            else:
+                ev = ev_map.get(sel[0]) or {}
+                ranks = ev.get("ranks") or []
+                if not ranks:
+                    self.sup_cond_lbl.configure(text="解锁条件：这对角色在游戏数据中没有支援对话。")
+                else:
+                    lines = []
+                    for rk in ranks:
+                        tag = f"[{rk['status_label']}]" if rk["status"] != "unknown" else ""
+                        line = f"• {rk['rank']} {tag}：{rk['summary']}"
+                        if rk["reasons"] and rk["status"] not in ("seen", "available", "unknown"):
+                            line += f"  → 未满足：{'；'.join(rk['reasons'])}"
+                        elif rk["warnings"] and rk["status"] != "seen":
+                            line += f"  ⚠ {'；'.join(rk['warnings'])}"
+                        lines.append(line)
+                    self.sup_cond_lbl.configure(text="\n".join(lines))
+
         if not sel or sel[0] not in pt:
             self.sup_pt_var.set("")
             self.sup_pt_lbl.configure(text="")
@@ -1855,6 +1953,8 @@ class App(AdvancedMixin, tk.Tk):
         if hasattr(self, "sup_tree"):
             self.sup_tree.tag_configure("sup_seen", foreground=p["fg"])
             self.sup_tree.tag_configure("sup_none", foreground=p["muted"])
+            self.sup_tree.tag_configure("sup_avail", foreground=p["ok"])
+            self.sup_tree.tag_configure("sup_danger", foreground=p["danger"])
 
     def _bind_keys(self):
         self.bind_all("<Control-s>", lambda e: self.save_all())
